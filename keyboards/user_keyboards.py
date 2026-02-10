@@ -2,6 +2,7 @@
 
 import calendar
 from datetime import datetime, timedelta
+from typing import List
 
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -20,6 +21,7 @@ from config import (
     WORK_HOURS_END,
     WORK_HOURS_START,
 )
+from database.models import Service
 from database.queries import Database
 from database.repositories.service_repository import ServiceRepository
 from utils.helpers import now_local
@@ -33,6 +35,39 @@ MAIN_MENU = ReplyKeyboardMarkup(
     resize_keyboard=True,
     one_time_keyboard=False,
 )
+
+
+def create_services_keyboard(services: List[Service]) -> InlineKeyboardMarkup:
+    """Клавиатура выбора услуги
+    
+    Args:
+        services: Список активных услуг
+        
+    Returns:
+        InlineKeyboardMarkup с кнопками выбора услуг
+    """
+    keyboard = []
+    
+    for service in services:
+        # Форматируем кнопку: Название (длительность, цена)
+        button_text = f"{service.name} ({service.duration_minutes}мин, {service.price})"
+        
+        keyboard.append([
+            InlineKeyboardButton(
+                text=button_text,
+                callback_data=f"select_service:{service.id}"
+            )
+        ])
+    
+    # Кнопка отмены
+    keyboard.append([
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data="cancel_booking_flow"
+        )
+    ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 async def create_month_calendar(year: int, month: int) -> InlineKeyboardMarkup:
@@ -169,8 +204,8 @@ async def create_time_slots(
             [InlineKeyboardButton(text="🔙 К календарю", callback_data="back_calendar")]
         ])
         return (
-            "❌ ОШИБКА\\n\\n"
-            "Эта дата уже прошла.\\n"
+            "❌ ОШИБКА\n\n"
+            "Эта дата уже прошла.\n"
             "Выберите дату из календаря.",
             error_kb
         )
@@ -255,8 +290,8 @@ async def create_time_slots(
         ]
         reason = "прошли или заняты" if is_today else "заняты"
         text = (
-            f"❌ ВСЕ СЛОТЫ {reason.upper()}\\n\\n"
-            f"📅 {date_obj.strftime('%d.%m.%Y')} ({DAY_NAMES[date_obj.weekday()]})\\n\\n"
+            f"❌ ВСЕ СЛОТЫ {reason.upper()}\n\n"
+            f"📅 {date_obj.strftime('%d.%m.%Y')} ({DAY_NAMES[date_obj.weekday()]})\n\n"
             "Попробуйте выбрать другую дату."
         )
     else:
@@ -267,21 +302,22 @@ async def create_time_slots(
         service_info = ""
         if service:
             service_info = (
-                f"📝 Услуга: {service.name}\\n"
-                f"⏱ Длительность: {service.duration_minutes} мин\\n\\n"
+                f"📝 Услуга: {service.name}\n"
+                f"⏱ Длительность: {service.duration_minutes} мин\n"
+                f"💰 Цена: {service.price}\n\n"
             )
         
         text = (
             f"{service_info}"
-            "📍 ШАГ 3 из 4: Выберите время\\n\\n"
-            f"📅 {date_obj.strftime('%d.%m.%Y')} ({day_name})\\n"
-            f"🟢 Свободно: {free_count}/{total_possible_slots} слотов\\n"
+            "📍 ШАГ 3 из 4: Выберите время\n\n"
+            f"📅 {date_obj.strftime('%d.%m.%Y')} ({day_name})\n"
+            f"🟢 Свободно: {free_count}/{total_possible_slots} слотов\n"
         )
 
         if free_count <= 3:
-            text += "⚠️ Мало мест — записывайтесь скорее!\\n"
+            text += "⚠️ Мало мест — записывайтесь скорее!\n"
 
-        text += "\\n✅ = свободно | ❌ = занято"
+        text += "\n✅ = свободно | ❌ = занято"
 
     keyboard.append(
         [InlineKeyboardButton(text="🔙 К календарю", callback_data="back_calendar")]
