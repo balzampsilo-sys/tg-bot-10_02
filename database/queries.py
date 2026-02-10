@@ -1,7 +1,7 @@
 """Фасад для работы с базой данных через репозитории"""
 
 import logging
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import aiosqlite
 
@@ -138,7 +138,12 @@ class Database:
         return await BookingRepository.is_slot_free(date_str, time_str)
 
     @staticmethod
-    async def get_occupied_slots_for_day(date_str: str) -> Set[str]:
+    async def get_occupied_slots_for_day(date_str: str) -> List[Tuple[str, int]]:
+        """Получить занятые слоты с длительностью
+        
+        Returns:
+            List[Tuple[time_str, duration_minutes]]
+        """
         return await BookingRepository.get_occupied_slots_for_day(date_str)
 
     @staticmethod
