@@ -40,10 +40,9 @@ CANCELLATION_HOURS = 24
 WORK_HOURS_START = 9
 WORK_HOURS_END = 19
 
-# Настройки услуги
-SERVICE_DURATION = "1 час"
+# ✅ DEPRECATED: Услуги теперь управляются через БД и админ-панель
+# Оставлено для обратной совместимости в напоминаниях
 SERVICE_LOCATION = "г. Москва, ул. Примерная, 1 / Онлайн"
-SERVICE_PRICE = "3000 ₽"
 
 # Временная зона (ИСПРАВЛЕНО: используем pytz для корректной обработки DST)
 TIMEZONE = pytz.timezone("Europe/Moscow")
