@@ -20,14 +20,12 @@ from config import (
     ERROR_SERVICE_UNAVAILABLE,
     ERROR_SLOT_TAKEN,
     MAX_BOOKINGS_PER_USER,
-    SERVICE_DURATION,
-    SERVICE_LOCATION,
-    SERVICE_PRICE,
     TIMEZONE,
     WORK_HOURS_END,
     WORK_HOURS_START,
 )
 from database.queries import Database
+from database.repositories.service_repository import ServiceRepository
 from keyboards.user_keyboards import (
     MAIN_MENU,
     create_cancel_confirmation_keyboard,
@@ -52,7 +50,7 @@ router = Router()
 
 @router.message(F.text == "📅 Записаться")
 async def booking_start(message: Message, state: FSMContext):
-    """Начало процесса записи"""
+    """Начало процесса записи - выбор услуги"""
     await state.clear()
     await Database.log_event(message.from_user.id, "booking_started")
 
@@ -60,25 +58,99 @@ async def booking_start(message: Message, state: FSMContext):
 
     if not can_book:
         await message.answer(
-            f"⚠️ У вас уже {MAX_BOOKINGS_PER_USER} активных записи.\n\n"
-            "Отмените одну из них, чтобы записаться снова.\n"
+            f"⚠️ У вас уже {MAX_BOOKINGS_PER_USER} активных записи.\\n\\n"
+            "Отмените одну из них, чтобы записаться снова.\\n"
             "📋 Мои записи → выберите запись для отмены",
             reply_markup=MAIN_MENU,
         )
         return
 
+    # ✅ НОВОЕ: Получаем активные услуги
+    services = await ServiceRepository.get_all_services(active_only=True)
+
+    if not services:
+        await message.answer(
+            "⚠️ УСЛУГИ ВРЕМЕННО НЕДОСТУПНЫ\\n\\n"
+            "В данный момент нет доступных услуг для бронирования.\\n"
+            "Пожалуйста, обратитесь к администратору или попробуйте позже.",
+            reply_markup=MAIN_MENU,
+        )
+        logging.error("No active services available for booking")
+        return
+
+    # ✅ НОВОЕ: Создаем клавиатуру выбора услуг
+    keyboard = []
+    for service in services:
+        service_text = (
+            f"{service.name}\\n"
+            f"⏱ {service.duration_minutes} мин | 💰 {service.price}"
+        )
+        keyboard.append([
+            InlineKeyboardButton(
+                text=service_text,
+                callback_data=f"select_service:{service.id}"
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_booking_flow")
+    ])
+
+    kb = InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    await message.answer(
+        "📍 ШАГ 1 из 4: Выберите услугу\\n\\n"
+        f"📊 Ваших записей: {current_count}/{MAX_BOOKINGS_PER_USER}\\n\\n"
+        "Выберите услугу для записи:",
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(F.data.startswith("select_service:"))
+async def select_service(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора услуги"""
+    service_id = validate_id(callback.data.split(":")[1], "service_id")
+    if not service_id:
+        await callback.answer("❌ Ошибка: неверный ID услуги", show_alert=True)
+        return
+
+    # Получаем услугу и проверяем доступность
+    service = await ServiceRepository.get_service_by_id(service_id)
+    if not service or not service.is_active:
+        await callback.answer(
+            "❌ Выбранная услуга недоступна\\nВыберите другую",
+            show_alert=True
+        )
+        return
+
+    # ✅ Сохраняем service_id в состоянии
+    await state.update_data(service_id=service_id)
+
+    # Переход к календарю
     today = now_local()
     kb = await create_month_calendar(today.year, today.month)
 
-    await message.answer(
-        "📍 ШАГ 1 из 3: Выберите дату\n\n"
-        "🟢 = все слоты свободны\n"
-        "🟡 = есть свободные слоты\n"
-        "🔴 = все занято\n"
-        "⚫ = прошедшая дата\n\n"
+    service_info = (
+        f"✅ Выбрана услуга: {service.name}\\n"
+        f"⏱ Длительность: {service.duration_minutes} мин\\n"
+        f"💰 Цена: {service.price}\\n"
+    )
+    if service.description:
+        service_info += f"📄 {service.description}\\n"
+
+    can_book, current_count = await Database.can_user_book(callback.from_user.id)
+
+    await callback.message.edit_text(
+        f"{service_info}\\n"
+        "📍 ШАГ 2 из 4: Выберите дату\\n\\n"
+        "🟢 = все слоты свободны\\n"
+        "🟡 = есть свободные слоты\\n"
+        "🔴 = все занято\\n"
+        "⚫ = прошедшая дата\\n\\n"
         f"📊 Ваших записей: {current_count}/{MAX_BOOKINGS_PER_USER}",
         reply_markup=kb,
     )
+    await callback.answer(f"✅ {service.name}")
 
 
 @router.callback_query(F.data.startswith("cal:"))
@@ -93,7 +165,7 @@ async def month_nav(callback: CallbackQuery):
 
     try:
         await callback.message.edit_text(
-            "📍 ШАГ 1 из 3: Выберите дату\n\n" "🟢🟡🔴⚫ — статус дня", reply_markup=kb
+            "📍 ШАГ 2 из 4: Выберите дату\\n\\n" "🟢🟡🔴⚫ — статус дня", reply_markup=kb
         )
     except Exception as e:
         logging.error(f"Error editing message in month_nav: {e}")
@@ -117,14 +189,37 @@ async def select_day(callback: CallbackQuery, state: FSMContext):
     if not is_valid:
         await callback.answer(f"❌ {error_msg}", show_alert=True)
         return
-    
-    # Проверяем есть ли свободные слоты
-    occupied = await Database.get_occupied_slots_for_day(date_str)
-    total_slots = WORK_HOURS_END - WORK_HOURS_START
-    
-    if len(occupied) >= total_slots:
+
+    # ✅ НОВОЕ: Получаем service_id из состояния
+    data = await state.get_data()
+    service_id = data.get("service_id")
+
+    if not service_id:
         await callback.answer(
-            "❌ Все слоты на эту дату заняты\n\nВыберите другую дату", 
+            "❌ Ошибка: данные потеряны\\nНачните заново",
+            show_alert=True
+        )
+        await state.clear()
+        return
+
+    # Получаем услугу для проверки длительности
+    service = await ServiceRepository.get_service_by_id(service_id)
+    if not service or not service.is_active:
+        await callback.answer(
+            "❌ Услуга больше недоступна\\nВыберите другую",
+            show_alert=True
+        )
+        await state.clear()
+        return
+
+    # ✅ ИСПРАВЛЕНО: Проверяем есть ли свободные слоты с учетом длительности
+    occupied = await Database.get_occupied_slots_for_day(date_str)
+    duration_hours = (service.duration_minutes + 59) // 60  # Округление вверх
+    total_slots = WORK_HOURS_END - WORK_HOURS_START - duration_hours + 1
+
+    if total_slots <= 0 or len(occupied) >= total_slots:
+        await callback.answer(
+            "❌ Все слоты на эту дату заняты\\n\\nВыберите другую дату",
             show_alert=True
         )
         return
@@ -165,12 +260,28 @@ async def confirm_time(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         return
 
+    # ✅ НОВОЕ: Получаем service_id
+    data = await state.get_data()
+    service_id = data.get("service_id")
+
+    if not service_id:
+        await callback.answer("❌ Ошибка: данные потеряны", show_alert=True)
+        await state.clear()
+        return
+
+    # Получаем услугу
+    service = await ServiceRepository.get_service_by_id(service_id)
+    if not service or not service.is_active:
+        await callback.answer("❌ Услуга недоступна", show_alert=True)
+        await state.clear()
+        return
+
     # Проверяем что дата не в прошлом
     date_obj = datetime.strptime(date_str, "%Y-%m-%d")
     time_obj = datetime.strptime(time_str, "%H:%M")
     booking_dt = datetime.combine(date_obj.date(), time_obj.time())
     booking_dt = booking_dt.replace(tzinfo=TIMEZONE)
-    
+
     if booking_dt < now_local():
         await callback.answer("❌ Нельзя выбрать прошедшее время", show_alert=True)
         await state.clear()
@@ -188,12 +299,16 @@ async def confirm_time(callback: CallbackQuery, state: FSMContext):
     day_name = DAY_NAMES[date_obj.weekday()]
     confirm_kb = create_confirmation_keyboard(date_str, time_str)
 
+    # ✅ НОВОЕ: Показываем информацию об услуге
     try:
         await callback.message.edit_text(
-            "📍 ШАГ 3 из 3: Подтверждение\n\n"
-            f"📅 {date_obj.strftime('%d.%m.%Y')} ({day_name})\n"
-            f"🕒 {time_str}\n\n"
-            "✅ Подтвердить?",
+            "📍 ШАГ 4 из 4: Подтверждение\\n\\n"
+            f"📝 Услуга: {service.name}\\n"
+            f"📅 Дата: {date_obj.strftime('%d.%m.%Y')} ({day_name})\\n"
+            f"🕒 Время: {time_str}\\n"
+            f"⏱ Длительность: {service.duration_minutes} мин\\n"
+            f"💰 Цена: {service.price}\\n\\n"
+            "✅ Подтвердить запись?",
             reply_markup=confirm_kb,
         )
     except Exception as e:
@@ -206,7 +321,7 @@ async def cancel_booking_flow(callback: CallbackQuery, state: FSMContext):
     """Отмена процесса бронирования"""
     await state.clear()
     await callback.message.edit_text(
-        "❌ Запись отменена\n\nВы вернулись в главное меню", reply_markup=None
+        "❌ Запись отменена\\n\\nВы вернулись в главное меню", reply_markup=None
     )
     await callback.answer("Действие отменено")
 
@@ -233,24 +348,36 @@ async def book_time(
         await callback.answer("❌ Ошибка: неверный формат данных", show_alert=True)
         return
 
+    # ✅ НОВОЕ: Получаем service_id из состояния
+    data = await state.get_data()
+    service_id = data.get("service_id")
+
+    if not service_id:
+        await callback.answer("❌ Ошибка: данные потеряны", show_alert=True)
+        await state.clear()
+        return
+
     user_id = callback.from_user.id
     username = callback.from_user.username or callback.from_user.first_name or "Гость"
 
+    # ✅ КРИТИЧНО: Передаем service_id в create_booking
     success, error_code = await booking_service.create_booking(
-        date_str, time_str, user_id, username
+        date_str, time_str, user_id, username, service_id=service_id
     )
 
     if success:
+        # Получаем услугу для отображения
+        service = await ServiceRepository.get_service_by_id(service_id)
         date_obj = datetime.strptime(date_str, "%Y-%m-%d")
 
         await callback.message.edit_text(
-            "✅ ЗАПИСЬ ПОДТВЕРЖДЕНА!\n\n"
-            f"📅 {date_obj.strftime('%d.%m.%Y')} ({DAY_NAMES[date_obj.weekday()]})\n"
-            f"🕒 {time_str}\n"
-            f"⏱ {SERVICE_DURATION}\n"
-            f"📍 {SERVICE_LOCATION}\n"
-            f"💰 {SERVICE_PRICE}\n\n"
-            "⏰ Напоминание за 24 часа\n"
+            "✅ ЗАПИСЬ ПОДТВЕРЖДЕНА!\\n\\n"
+            f"📝 Услуга: {service.name}\\n"
+            f"📅 {date_obj.strftime('%d.%m.%Y')} ({DAY_NAMES[date_obj.weekday()]})\\n"
+            f"🕒 {time_str}\\n"
+            f"⏱ {service.duration_minutes} мин\\n"
+            f"💰 {service.price}\\n\\n"
+            "⏰ Напоминание за 24 часа\\n"
             "📋 'Мои записи' — посмотреть все"
         )
         await callback.answer("✅ Запись создана!", show_alert=False)
@@ -264,31 +391,33 @@ async def book_time(
     else:
         # УЛУЧШЕННАЯ обработка ошибок с константами
         error_messages = {
-            ERROR_NO_SERVICES: "⚠️ Услуги временно недоступны\n\nОбратитесь к администратору",
+            ERROR_NO_SERVICES: "⚠️ Услуги временно недоступны\\n\\nОбратитесь к администратору",
             ERROR_SERVICE_UNAVAILABLE: "⚠️ Выбранная услуга недоступна",
             ERROR_LIMIT_EXCEEDED: f"⚠️ У вас уже {MAX_BOOKINGS_PER_USER} активных записи",
             ERROR_SLOT_TAKEN: "❌ Этот слот уже занят!",
         }
-        
+
         message = error_messages.get(error_code, "❌ Произошла ошибка, попробуйте позже")
-        
+
         if error_code == ERROR_NO_SERVICES:
             # Критичная ошибка - услуги отсутствуют
             await callback.message.edit_text(message)
             await callback.answer("Обратитесь к администратору", show_alert=True)
         else:
             await callback.answer(message, show_alert=True)
-            
+
             # Показываем слоты снова
             if error_code != ERROR_NO_SERVICES:
                 try:
                     text, kb = await create_time_slots(date_str, state)
                     await callback.message.edit_text(
-                        "❌ Не удалось записать\n\nВыберите другое время:", 
+                        "❌ Не удалось записать\\n\\nВыберите другое время:",
                         reply_markup=kb
                     )
                 except Exception as e:
                     logging.error(f"Error showing time slots after failed booking: {e}")
+
+    await state.clear()
 
 
 @router.callback_query(F.data == "back_calendar")
@@ -304,16 +433,16 @@ async def back_calendar(callback: CallbackQuery, state: FSMContext):
 
     if is_rescheduling:
         await callback.message.edit_text(
-            "📅 ПЕРЕНОС ЗАПИСИ\n\n"
-            "Шаг 1: Выберите НОВУЮ дату\n\n"
+            "📅 ПЕРЕНОС ЗАПИСИ\\n\\n"
+            "Шаг 1: Выберите НОВУЮ дату\\n\\n"
             "🟢🟡🔴⚫ — статус дня",
             reply_markup=kb,
         )
     else:
         can_book, current_count = await Database.can_user_book(callback.from_user.id)
         await callback.message.edit_text(
-            "📍 ШАГ 1 из 3: Выберите дату\n\n"
-            "🟢🟡🔴⚫ — статус дня\n\n"
+            "📍 ШАГ 2 из 4: Выберите дату\\n\\n"
+            "🟢🟡🔴⚫ — статус дня\\n\\n"
             f"📊 Ваших записей: {current_count}/{MAX_BOOKINGS_PER_USER}",
             reply_markup=kb,
         )
@@ -329,7 +458,7 @@ async def my_bookings(message: Message):
         await message.answer("📭 У вас нет активных записей", reply_markup=MAIN_MENU)
         return
 
-    text = "📋 ВАШИ АКТИВНЫЕ ЗАПИСИ:\n\n"
+    text = "📋 ВАШИ АКТИВНЫЕ ЗАПИСИ:\\n\\n"
     keyboard = []
     now = now_local()
 
@@ -346,11 +475,11 @@ async def my_bookings(message: Message):
         text += f"{i}. 📅 {date_obj.strftime('%d.%m')} ({day_name}) 🕒 {time_str}"
 
         if days_left == 0:
-            text += " — сегодня!\n"
+            text += " — сегодня!\\n"
         elif days_left == 1:
-            text += " — завтра\n"
+            text += " — завтра\\n"
         else:
-            text += f" — через {days_left} дн.\n"
+            text += f" — через {days_left} дн.\\n"
 
         keyboard.append(
             [
@@ -380,7 +509,7 @@ async def cancel_booking_callback(callback: CallbackQuery, state: FSMContext):
 
     _, booking_id_str = result
     booking_id = validate_id(booking_id_str)
-    
+
     if not booking_id:
         await callback.answer("❌ Ошибка: неверный ID записи", show_alert=True)
         return
@@ -396,8 +525,8 @@ async def cancel_booking_callback(callback: CallbackQuery, state: FSMContext):
 
     if not can_cancel:
         await callback.answer(
-            f"⚠️ До встречи осталось {hours_until:.1f}ч\n"
-            f"Отмена возможна за {CANCELLATION_HOURS}ч.\n"
+            f"⚠️ До встречи осталось {hours_until:.1f}ч\\n"
+            f"Отмена возможна за {CANCELLATION_HOURS}ч.\\n"
             "Свяжитесь с администратором.",
             show_alert=True,
         )
@@ -407,9 +536,9 @@ async def cancel_booking_callback(callback: CallbackQuery, state: FSMContext):
     confirm_kb = create_cancel_confirmation_keyboard(booking_id)
 
     await callback.message.edit_text(
-        "⚠️ ПОДТВЕРЖДЕНИЕ ОТМЕНЫ\n\n"
-        f"📅 {date_obj.strftime('%d.%m.%Y')}\n"
-        f"🕒 {time_str}\n\n"
+        "⚠️ ПОДТВЕРЖДЕНИЕ ОТМЕНЫ\\n\\n"
+        f"📅 {date_obj.strftime('%d.%m.%Y')}\\n"
+        f"🕒 {time_str}\\n\\n"
         "Точно отменить?",
         reply_markup=confirm_kb,
     )
@@ -430,7 +559,7 @@ async def cancel_confirmed(
 
     _, booking_id_str = result
     booking_id = validate_id(booking_id_str)
-    
+
     if not booking_id:
         await callback.answer("❌ Ошибка: неверный ID записи", show_alert=True)
         return
@@ -448,9 +577,9 @@ async def cancel_confirmed(
 
     if success:
         await callback.message.edit_text(
-            "✅ ЗАПИСЬ ОТМЕНЕНА\n\n"
-            f"📅 {date_str}\n"
-            f"🕒 {time_str}\n\n"
+            "✅ ЗАПИСЬ ОТМЕНЕНА\\n\\n"
+            f"📅 {date_str}\\n"
+            f"🕒 {time_str}\\n\\n"
             "Вы можете записаться снова в любое время"
         )
         await callback.answer("✅ Отменено")
@@ -469,7 +598,7 @@ async def cancel_confirmed(
 async def cancel_decline(callback: CallbackQuery):
     """Отклонение отмены"""
     await callback.message.edit_text(
-        "👍 ЗАПИСЬ СОХРАНЕНА\n\nВы можете посмотреть её в 'Мои записи'"
+        "👍 ЗАПИСЬ СОХРАНЕНА\\n\\nВы можете посмотреть её в 'Мои записи'"
     )
     await callback.answer("Запись сохранена")
 
@@ -484,10 +613,10 @@ async def save_feedback(callback: CallbackQuery):
         return
 
     _, booking_id_str, rating_str = result
-    
+
     booking_id = validate_id(booking_id_str)
     rating_val = validate_id(rating_str)
-    
+
     if not booking_id or not rating_val or not validate_rating(rating_val):
         await callback.answer("❌ Ошибка: неверный рейтинг", show_alert=True)
         return
@@ -498,8 +627,8 @@ async def save_feedback(callback: CallbackQuery):
     if success:
         await Database.log_event(user_id, "feedback_given", str(rating_val))
         await callback.message.edit_text(
-            "💚 Спасибо за отзыв!\n\n"
-            f"Ваша оценка: {'⭐' * rating_val}\n\n"
+            "💚 Спасибо за отзыв!\\n\\n"
+            f"Ваша оценка: {'⭐' * rating_val}\\n\\n"
             "Будем рады видеть вас снова! 😊"
         )
         await callback.answer("✅ Отзыв сохранен")
@@ -520,7 +649,7 @@ async def start_reschedule(callback: CallbackQuery, state: FSMContext):
 
     _, booking_id_str = result
     booking_id = validate_id(booking_id_str)
-    
+
     if not booking_id:
         await callback.answer("❌ Ошибка: неверный ID", show_alert=True)
         return
@@ -536,7 +665,7 @@ async def start_reschedule(callback: CallbackQuery, state: FSMContext):
     kb = await create_month_calendar(today.year, today.month)
 
     await callback.message.edit_text(
-        "📅 ПЕРЕНОС ЗАПИСИ\n\n" "Шаг 1: Выберите НОВУЮ дату\n\n" "🟢🟡🔴 — статус дня",
+        "📅 ПЕРЕНОС ЗАПИСИ\\n\\n" "Шаг 1: Выберите НОВУЮ дату\\n\\n" "🟢🟡🔴 — статус дня",
         reply_markup=kb,
     )
     await callback.answer("Выберите новую дату")
@@ -585,10 +714,10 @@ async def confirm_reschedule_time(callback: CallbackQuery, state: FSMContext):
     )
 
     await callback.message.edit_text(
-        "📅 ПОДТВЕРЖДЕНИЕ ПЕРЕНОСА\n\n"
-        "Перенести на:\n"
-        f"📅 {date_obj.strftime('%d.%m.%Y')} ({day_name})\n"
-        f"🕒 {time_str}\n\n"
+        "📅 ПОДТВЕРЖДЕНИЕ ПЕРЕНОСА\\n\\n"
+        "Перенести на:\\n"
+        f"📅 {date_obj.strftime('%d.%m.%Y')} ({day_name})\\n"
+        f"🕒 {time_str}\\n\\n"
         "Подтвердить?",
         reply_markup=kb,
     )
@@ -606,7 +735,7 @@ async def execute_reschedule(
         return
 
     _, booking_id_str, new_date_str, new_time_str = result
-    
+
     booking_id = validate_id(booking_id_str)
     if not booking_id:
         await callback.answer("❌ Ошибка: неверный ID", show_alert=True)
@@ -640,11 +769,11 @@ async def execute_reschedule(
     if success:
         date_obj = datetime.strptime(new_date_str, "%Y-%m-%d")
         await callback.message.edit_text(
-            "✅ ЗАПИСЬ ПЕРЕНЕСЕНА!\n\n"
-            f"Старая дата: {old_date_str} {old_time_str}\n\n"
-            "Новая дата:\n"
-            f"📅 {date_obj.strftime('%d.%m.%Y')} ({DAY_NAMES[date_obj.weekday()]})\n"
-            f"🕒 {new_time_str}\n\n"
+            "✅ ЗАПИСЬ ПЕРЕНЕСЕНА!\\n\\n"
+            f"Старая дата: {old_date_str} {old_time_str}\\n\\n"
+            "Новая дата:\\n"
+            f"📅 {date_obj.strftime('%d.%m.%Y')} ({DAY_NAMES[date_obj.weekday()]})\\n"
+            f"🕒 {new_time_str}\\n\\n"
             "⏰ Напоминание за 24 часа"
         )
         await callback.answer("✅ Перенесено!")
@@ -653,7 +782,7 @@ async def execute_reschedule(
         today = now_local()
         kb = await create_month_calendar(today.year, today.month)
         await callback.message.edit_text(
-            "❌ Слот занят или произошла ошибка\n\n" "Выберите другую дату:",
+            "❌ Слот занят или произошла ошибка\\n\\n" "Выберите другую дату:",
             reply_markup=kb,
         )
 
@@ -663,7 +792,7 @@ async def cancel_reschedule_flow(callback: CallbackQuery, state: FSMContext):
     """Отмена процесса переноса"""
     await state.clear()
     await callback.message.edit_text(
-        "❌ Перенос отменен\n\n" "Ваша запись осталась без изменений"
+        "❌ Перенос отменен\\n\\n" "Ваша запись осталась без изменений"
     )
     await callback.answer("Перенос отменен")
 
@@ -683,33 +812,33 @@ async def handle_error_callback(callback: CallbackQuery):
 @router.callback_query()
 async def catch_all_callback(callback: CallbackQuery, state: FSMContext):
     """Обработчик для устаревших кнопок"""
-    
+
     if callback.data == "ignore":
         await callback.answer()
         return
-    
+
     logging.warning(
         f"Unhandled callback: {callback.data} from user {callback.from_user.id}"
     )
-    
+
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-    
+
     await callback.answer()
-    
+
     await state.clear()
     today = now_local()
     kb = await create_month_calendar(today.year, today.month)
     can_book, current_count = await Database.can_user_book(callback.from_user.id)
-    
+
     await callback.message.answer(
-        "📍 ШАГ 1 из 3: Выберите дату\n\n"
-        "🟢 = все слоты свободны\n"
-        "🟡 = есть свободные слоты\n"
-        "🔴 = все занято\n"
-        "⚫ = прошедшая дата\n\n"
+        "📍 ШАГ 2 из 4: Выберите дату\\n\\n"
+        "🟢 = все слоты свободны\\n"
+        "🟡 = есть свободные слоты\\n"
+        "🔴 = все занято\\n"
+        "⚫ = прошедшая дата\\n\\n"
         f"📊 Ваших записей: {current_count}/{MAX_BOOKINGS_PER_USER}",
         reply_markup=kb
     )
