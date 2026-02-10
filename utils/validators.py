@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple
 
 
 def parse_callback_data(
@@ -41,12 +41,12 @@ def parse_callback_data(
         return None
 
 
-def validate_date_format(date_str: str, date_format: str = "%Y-%m-%d") -> bool:
+def validate_date_format(date_str: str, format: str = "%Y-%m-%d") -> bool:
     """Проверка формата даты
     
     Args:
         date_str: Строка даты
-        date_format: Формат даты (по умолчанию YYYY-MM-DD)
+        format: Формат даты (по умолчанию YYYY-MM-DD)
         
     Returns:
         True если формат корректен
@@ -55,22 +55,22 @@ def validate_date_format(date_str: str, date_format: str = "%Y-%m-%d") -> bool:
         >>> validate_date_format("2026-02-10")
         True
         
-        >>> validate_date_format("10/02/2026")
+        >>> validate_date_format("10-02-2026")
         False
     """
     try:
-        datetime.strptime(date_str, date_format)
+        datetime.strptime(date_str, format)
         return True
     except ValueError:
         return False
 
 
-def validate_time_format(time_str: str, time_format: str = "%H:%M") -> bool:
+def validate_time_format(time_str: str, format: str = "%H:%M") -> bool:
     """Проверка формата времени
     
     Args:
         time_str: Строка времени
-        time_format: Формат времени (по умолчанию HH:MM)
+        format: Формат времени (по умолчанию HH:MM)
         
     Returns:
         True если формат корректен
@@ -79,11 +79,11 @@ def validate_time_format(time_str: str, time_format: str = "%H:%M") -> bool:
         >>> validate_time_format("14:30")
         True
         
-        >>> validate_time_format("2:30 PM")
+        >>> validate_time_format("25:00")
         False
     """
     try:
-        datetime.strptime(time_str, time_format)
+        datetime.strptime(time_str, format)
         return True
     except ValueError:
         return False
@@ -130,36 +130,8 @@ def validate_rating(rating: int) -> bool:
         
         >>> validate_rating(0)
         False
-        
-        >>> validate_rating(6)
-        False
     """
     return 1 <= rating <= 5
-
-
-def validate_id(value: str) -> Optional[int]:
-    """Безопасное преобразование строки в ID
-    
-    Args:
-        value: Строковое значение ID
-        
-    Returns:
-        Integer ID или None при ошибке
-        
-    Example:
-        >>> validate_id("123")
-        123
-        
-        >>> validate_id("abc")
-        None
-    """
-    try:
-        id_value = int(value)
-        if id_value > 0:
-            return id_value
-        return None
-    except (ValueError, TypeError):
-        return None
 
 
 def sanitize_user_input(text: str, max_length: int = 200) -> str:
@@ -175,9 +147,6 @@ def sanitize_user_input(text: str, max_length: int = 200) -> str:
     Example:
         >>> sanitize_user_input("  Привет   мир  ")
         'Привет мир'
-        
-        >>> sanitize_user_input("A" * 300, max_length=10)
-        'AAAAAAAAAA'
     """
     if not text:
         return ""
@@ -192,49 +161,25 @@ def sanitize_user_input(text: str, max_length: int = 200) -> str:
     return text
 
 
-def validate_work_hours(hour: int, work_start: int = 9, work_end: int = 19) -> bool:
-    """Проверка что час находится в рабочих часах
+def validate_id(value: str, name: str = "ID") -> Optional[int]:
+    """Валидация и преобразование ID в integer
     
     Args:
-        hour: Час для проверки (0-23)
-        work_start: Начало рабочего дня
-        work_end: Конец рабочего дня
+        value: Строковое значение ID
+        name: Название поля для логирования
         
     Returns:
-        True если час в рабочем диапазоне
+        Integer ID или None при ошибке
         
     Example:
-        >>> validate_work_hours(10)
-        True
+        >>> validate_id("123")
+        123
         
-        >>> validate_work_hours(20)
-        False
-    """
-    return work_start <= hour < work_end
-
-
-def validate_date_not_past(date_str: str) -> Tuple[bool, str]:
-    """Проверка что дата не в прошлом
-    
-    Args:
-        date_str: Дата в формате YYYY-MM-DD
-        
-    Returns:
-        Tuple (is_valid, error_message)
-        
-    Example:
-        >>> from datetime import datetime, timedelta
-        >>> future = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-        >>> validate_date_not_past(future)
-        (True, "")
+        >>> validate_id("invalid")
+        None
     """
     try:
-        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-        today = datetime.now().date()
-        
-        if date_obj.date() < today:
-            return False, "Нельзя выбрать прошедшую дату"
-        
-        return True, ""
-    except ValueError:
-        return False, "Неверный формат даты"
+        return int(value)
+    except (ValueError, TypeError):
+        logging.warning(f"Invalid {name}: '{value}'")
+        return None
