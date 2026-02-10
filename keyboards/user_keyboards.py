@@ -223,7 +223,7 @@ async def create_time_slots(
     # Длительность услуги в минутах (по умолчанию 60)
     duration_minutes = service.duration_minutes if service else 60
 
-    # Получаем занятые слоты
+    # ✅ КРИТИЧНО: Получаем занятые слоты С ДЛИТЕЛЬНОСТЬЮ
     occupied_slots = await Database.get_occupied_slots_for_day(date_str)
 
     free_count = 0
@@ -251,20 +251,20 @@ async def create_time_slots(
         if end_hour > WORK_HOURS_END:
             continue
 
-        # Проверяем пересечения с существующими бронированиями
+        # ✅ КРИТИЧНО: Проверяем пересечения с РЕАЛЬНОЙ длительностью
         is_free = True
-        for occupied_time in occupied_slots:
+        for occupied_time, occupied_duration in occupied_slots:
             occupied_datetime_naive = datetime.combine(
                 date_obj.date(),
                 datetime.strptime(occupied_time, "%H:%M").time()
             )
             occupied_datetime = TIMEZONE.localize(occupied_datetime_naive)
             
-            # Предполагаем что существующие брони тоже имеют duration
-            # (В реальности нужно получить duration из БД для каждой брони)
-            occupied_end = occupied_datetime + timedelta(minutes=60)
+            # ✅ КРИТИЧНО: Используем РЕАЛЬНУЮ duration из БД!
+            occupied_end = occupied_datetime + timedelta(minutes=occupied_duration)
             
             # Проверяем пересечение интервалов
+            # [slot_start, slot_end) пересекается с [occupied_start, occupied_end)
             if slot_datetime < occupied_end and end_datetime > occupied_datetime:
                 is_free = False
                 break

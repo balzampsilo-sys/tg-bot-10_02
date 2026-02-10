@@ -44,23 +44,38 @@ class BookingRepository(BaseRepository):
             return False
 
     @staticmethod
-    async def get_occupied_slots_for_day(date_str: str) -> Set[str]:
-        """Получить все занятые слоты за день"""
-        occupied = set()
+    async def get_occupied_slots_for_day(date_str: str) -> List[Tuple[str, int]]:
+        """Получить все занятые слоты за день с длительностью
+        
+        Returns:
+            List[Tuple[time_str, duration_minutes]]
+            Например: [('10:00', 60), ('14:00', 90), ('16:00', 120)]
+        """
+        occupied = []
         try:
-            # Забронированные
-            bookings = await BookingRepository._execute_query(
-                "SELECT time FROM bookings WHERE date=?", (date_str,), fetch_all=True
-            )
-            if bookings:
-                occupied.update(time for (time,) in bookings)
+            # ✅ КРИТИЧНО: Получаем time + duration из JOIN с services
+            async with aiosqlite.connect(DATABASE_PATH) as db:
+                # Забронированные с duration из services
+                async with db.execute(
+                    """SELECT b.time, COALESCE(s.duration_minutes, 60) as duration
+                    FROM bookings b
+                    LEFT JOIN services s ON b.service_id = s.id
+                    WHERE b.date = ?""",
+                    (date_str,)
+                ) as cursor:
+                    bookings = await cursor.fetchall()
+                    if bookings:
+                        occupied.extend((time, duration) for time, duration in bookings)
 
-            # Заблокированные
-            blocked = await BookingRepository._execute_query(
-                "SELECT time FROM blocked_slots WHERE date=?", (date_str,), fetch_all=True
-            )
-            if blocked:
-                occupied.update(time for (time,) in blocked)
+                # Заблокированные (длительность 60 мин по умолчанию)
+                async with db.execute(
+                    "SELECT time FROM blocked_slots WHERE date = ?",
+                    (date_str,)
+                ) as cursor:
+                    blocked = await cursor.fetchall()
+                    if blocked:
+                        occupied.extend((time, 60) for (time,) in blocked)
+                        
         except Exception as e:
             logging.error(f"Error getting occupied slots for {date_str}: {e}")
 
