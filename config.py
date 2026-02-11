@@ -21,7 +21,7 @@ ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_STR.split(",") if x.strip()]
 if not ADMIN_IDS:
     sys.exit("❌ ADMIN_IDS not found in .env")
 
-# ✅ NEW: Rate limit для добавления админов
+# ✅ Rate limit для добавления админов
 MAX_ADMIN_ADDITIONS_PER_HOUR = int(os.getenv("MAX_ADMIN_ADDITIONS_PER_HOUR", "3"))
 
 # === BOOKINGS ===
@@ -36,6 +36,7 @@ WORK_HOURS_END = int(os.getenv("WORK_HOURS_END", "18"))
 DATABASE_PATH = os.getenv("DATABASE_PATH", "bookings.db")
 
 # === BACKUP ===
+BACKUP_ENABLED = os.getenv("BACKUP_ENABLED", "True").lower() in ("true", "1", "yes")  # ✅ ADDED
 BACKUP_DIR = os.getenv("BACKUP_DIR", "backups")
 BACKUP_INTERVAL_HOURS = int(os.getenv("BACKUP_INTERVAL_HOURS", "24"))
 BACKUP_RETENTION_DAYS = int(os.getenv("BACKUP_RETENTION_DAYS", "30"))
