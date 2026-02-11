@@ -15,7 +15,7 @@ import aiosqlite
 
 from config import DATABASE_PATH
 from keyboards.admin_keyboards import ADMIN_MENU
-from utils.helpers import is_admin
+from utils.helpers import is_admin_async  # ✅ FIX: Используем async версию
 
 
 router = Router()
@@ -66,7 +66,7 @@ EDITABLE_FIELDS_CONFIG = {
 @router.message(F.text == "✏️ Редактор полей")
 async def field_editor_menu(message: Message, state: FSMContext):
     """Главное меню универсального редактора"""
-    if not is_admin(message.from_user.id):
+    if not await is_admin_async(message.from_user.id):  # ✅ FIX: async проверка
         await message.answer("❌ Нет доступа")
         return
     
@@ -98,7 +98,7 @@ async def field_editor_menu(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("editor_select_type:"))
 async def select_field_type(callback: CallbackQuery, state: FSMContext):
     """Выбор типа полей для редактирования"""
-    if not is_admin(callback.from_user.id):
+    if not await is_admin_async(callback.from_user.id):  # ✅ FIX
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
     
@@ -128,7 +128,7 @@ async def select_field_type(callback: CallbackQuery, state: FSMContext):
     
     if not records:
         await callback.answer(
-            f"📭 Нет записей в '{config['display_name']}'",
+            f"💭 Нет записей в '{config['display_name']}'",
             show_alert=True
         )
         return
@@ -176,7 +176,7 @@ async def select_field_type(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("editor_select_record:"))
 async def select_record(callback: CallbackQuery, state: FSMContext):
     """Выбор записи - показываем доступные поля"""
-    if not is_admin(callback.from_user.id):
+    if not await is_admin_async(callback.from_user.id):  # ✅ FIX
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
     
@@ -256,7 +256,7 @@ async def select_record(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("editor_edit_field:"))
 async def start_field_edit(callback: CallbackQuery, state: FSMContext):
     """Начало редактирования поля"""
-    if not is_admin(callback.from_user.id):
+    if not await is_admin_async(callback.from_user.id):  # ✅ FIX
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
     
@@ -301,7 +301,7 @@ async def start_field_edit(callback: CallbackQuery, state: FSMContext):
 @router.message(FieldEditStates.entering_new_value)
 async def apply_field_edit(message: Message, state: FSMContext):
     """Применение изменения поля"""
-    if not is_admin(message.from_user.id):
+    if not await is_admin_async(message.from_user.id):  # ✅ FIX
         await state.clear()
         return
     
