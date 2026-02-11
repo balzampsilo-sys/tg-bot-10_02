@@ -2,9 +2,9 @@
 
 import os
 import sys
-from datetime import timezone, timedelta
 from pathlib import Path
 
+import pytz
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -29,15 +29,15 @@ MAX_BOOKINGS_PER_USER = int(os.getenv("MAX_BOOKINGS_PER_USER", "3"))
 CANCELLATION_HOURS = int(os.getenv("CANCELLATION_HOURS", "24"))
 
 # === REMINDERS ===
-REMINDER_HOURS_BEFORE_1H = int(os.getenv("REMINDER_HOURS_BEFORE_1H", "1"))    # ✅ ADDED
-REMINDER_HOURS_BEFORE_2H = int(os.getenv("REMINDER_HOURS_BEFORE_2H", "2"))    # ✅ ADDED
-REMINDER_HOURS_BEFORE_24H = int(os.getenv("REMINDER_HOURS_BEFORE_24H", "24")) # ✅ ADDED
+REMINDER_HOURS_BEFORE_1H = int(os.getenv("REMINDER_HOURS_BEFORE_1H", "1"))
+REMINDER_HOURS_BEFORE_2H = int(os.getenv("REMINDER_HOURS_BEFORE_2H", "2"))
+REMINDER_HOURS_BEFORE_24H = int(os.getenv("REMINDER_HOURS_BEFORE_24H", "24"))
 
 # === FEEDBACK ===
 FEEDBACK_HOURS_AFTER = int(os.getenv("FEEDBACK_HOURS_AFTER", "2"))
 
 # === SERVICE INFO ===
-SERVICE_LOCATION = os.getenv("SERVICE_LOCATION", "Москва, ул. Примерная, 1")  # ✅ ADDED
+SERVICE_LOCATION = os.getenv("SERVICE_LOCATION", "Москва, ул. Примерная, 1")
 
 # === WORK SCHEDULE ===
 WORK_HOURS_START = int(os.getenv("WORK_HOURS_START", "9"))
@@ -45,6 +45,11 @@ WORK_HOURS_END = int(os.getenv("WORK_HOURS_END", "18"))
 
 # === DATABASE ===
 DATABASE_PATH = os.getenv("DATABASE_PATH", "bookings.db")
+
+# === DATABASE RETRY LOGIC ✅ NEW ===
+DB_MAX_RETRIES = int(os.getenv("DB_MAX_RETRIES", "3"))
+DB_RETRY_DELAY = float(os.getenv("DB_RETRY_DELAY", "0.5"))  # seconds
+DB_RETRY_BACKOFF = float(os.getenv("DB_RETRY_BACKOFF", "2.0"))  # multiplier
 
 # === BACKUP ===
 BACKUP_ENABLED = os.getenv("BACKUP_ENABLED", "True").lower() in ("true", "1", "yes")
@@ -58,8 +63,8 @@ BROADCAST_DELAY = float(os.getenv("BROADCAST_DELAY", "0.05"))
 # === CALENDAR ===
 CALENDAR_MAX_MONTHS_AHEAD = int(os.getenv("CALENDAR_MAX_MONTHS_AHEAD", "3"))
 
-# === TIMEZONE ===
-TIMEZONE = timezone(timedelta(hours=3))  # MSK
+# === TIMEZONE ✅ FIXED: Use pytz for proper DST handling ===
+TIMEZONE = pytz.timezone('Europe/Moscow')  # Properly handles DST transitions
 
 # === DAY NAMES ===
 DAY_NAMES = [
@@ -79,23 +84,22 @@ MONTH_NAMES = [
     "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
 ]
 
-# === CALLBACK VALIDATION (Priority 1) ===
+# === CALLBACK VALIDATION ===
 CALLBACK_VERSION = "v3"
 CALLBACK_MESSAGE_TTL_HOURS = 48
 
-# === ERROR CODES (Priority 2) ===
+# === ERROR CODES ===
 ERROR_NO_SERVICES = "NO_SERVICES"
 ERROR_SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
 ERROR_LIMIT_EXCEEDED = "LIMIT_EXCEEDED"
 ERROR_SLOT_TAKEN = "SLOT_TAKEN"
 
-# === ADMIN ROLES (Low Priority) ===
+# === ADMIN ROLES ===
 ROLE_SUPER_ADMIN = "super_admin"
 ROLE_MODERATOR = "moderator"
 
 ADMIN_ROLES = [ROLE_SUPER_ADMIN, ROLE_MODERATOR]
 
-# Права доступа по ролям
 ROLE_PERMISSIONS = {
     ROLE_SUPER_ADMIN: {
         "manage_admins": True,
