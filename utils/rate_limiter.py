@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple  # ✅ ADDED: Optional
 
 from config import MAX_ADMIN_ADDITIONS_PER_HOUR, ROLE_SUPER_ADMIN
 from database.repositories.admin_repository import AdminRepository
