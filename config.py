@@ -37,8 +37,8 @@ DATABASE_PATH = "bookings.db"
 # Настройки бронирования
 MAX_BOOKINGS_PER_USER = 3
 CANCELLATION_HOURS = 24
-WORK_HOURS_START = 9
-WORK_HOURS_END = 19
+WORK_HOURS_START = 7   # ✅ ИЗМЕНЕНО: с 9 до 7
+WORK_HOURS_END = 22    # ✅ ИЗМЕНЕНО: с 19 до 22
 
 # ✅ DEPRECATED: Услуги теперь управляются через БД и админ-панель
 # Оставлено для обратной совместимости в напоминаниях
@@ -49,7 +49,7 @@ TIMEZONE = pytz.timezone("Europe/Moscow")
 
 # Тайминги и задержки (в секундах)
 ONBOARDING_DELAY_SHORT = 1.0  # Короткая задержка между сообщениями
-ONBOARDING_DELAY_LONG = 4.0   # Длинная задержка для чтения
+ONBOARDING_DELAY_LONG = 1.0   # ✅ ИЗМЕНЕНО: с 4.0 до 1.0 секунды
 BROADCAST_DELAY = 0.05        # Задержка между сообщениями в рассылке (50ms)
 RATE_LIMIT_TIME = 1.0         # Время между действиями одного пользователя
 
@@ -64,6 +64,12 @@ REMINDER_HOURS_BEFORE_24H = 24  # Напоминание за 24 часа
 REMINDER_HOURS_BEFORE_2H = 2    # Напоминание за 2 часа
 REMINDER_HOURS_BEFORE_1H = 1    # Напоминание за 1 час
 FEEDBACK_HOURS_AFTER = 2        # Запрос обратной связи через 2 часа после встречи
+
+# === НАСТРОЙКИ РЕЗЕРВНОГО КОПИРОВАНИЯ ===
+BACKUP_ENABLED = os.getenv("BACKUP_ENABLED", "true").lower() == "true"
+BACKUP_INTERVAL_HOURS = int(os.getenv("BACKUP_INTERVAL_HOURS", "6"))  # Каждые 6 часов
+BACKUP_RETENTION_DAYS = int(os.getenv("BACKUP_RETENTION_DAYS", "30"))  # Хранить 30 дней
+BACKUP_DIR = os.getenv("BACKUP_DIR", "backups")  # Директория для бэкапов
 
 # === КОДЫ ОШИБОК БРОНИРОВАНИЯ ===
 ERROR_NO_SERVICES = "no_services"              # Нет доступных услуг
