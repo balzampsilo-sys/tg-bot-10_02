@@ -1,342 +1,317 @@
-"""
-Централизованная валидация callback_data с проверкой актуальности.
+"""Централизованная валидация callback данных с проверкой актуальности"""
 
-КРИТИЧНО: Защита от устаревших кнопок и некорректных данных.
-"""
-
-import hashlib
 import logging
-from datetime import datetime
-from typing import Optional, Tuple
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
 
-from config import TIMEZONE
+from aiogram.types import CallbackQuery
+from aiogram.fsm.context import FSMContext
+
+from config import TIMEZONE, CALLBACK_VERSION, CALLBACK_MESSAGE_TTL_HOURS
 from database.queries import Database
-from utils.helpers import now_local
+from database.repositories.service_repository import ServiceRepository
+
+
+@dataclass
+class ValidationResult:
+    """Результат валидации callback"""
+    is_valid: bool
+    error_message: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+    should_clear_state: bool = False
+    should_disable_buttons: bool = False
 
 
 class CallbackValidator:
-    """Валидатор callback данных с проверкой актуальности"""
+    """Централизованный валидатор для callback данных"""
     
-    # Версия callback протокола (увеличивается при breaking changes)
-    CALLBACK_VERSION = "v2"
+    # Текущая версия callback (из config)
+    CURRENT_VERSION = CALLBACK_VERSION
     
-    @classmethod
-    def create_versioned_callback(cls, action: str, *args) -> str:
-        """
-        Создать версионированный callback_data.
-        
-        Args:
-            action: Действие (например, 'cancel', 'confirm')
-            *args: Дополнительные параметры
-            
-        Returns:
-            Строка вида "v2:action:arg1:arg2"
-            
-        Example:
-            >>> CallbackValidator.create_versioned_callback('cancel', 123)
-            'v2:cancel:123'
-        """
-        parts = [cls.CALLBACK_VERSION, action] + [str(arg) for arg in args]
-        callback_data = ":".join(parts)
-        
-        # Telegram ограничивает callback_data до 64 байт
-        if len(callback_data.encode('utf-8')) > 64:
-            # Используем хеш для длинных данных
-            data_hash = hashlib.md5(callback_data.encode()).hexdigest()[:8]
-            return f"{cls.CALLBACK_VERSION}:{action}:hash:{data_hash}"
-        
-        return callback_data
+    # Время жизни callback сообщений (часы)
+    MESSAGE_TTL_HOURS = CALLBACK_MESSAGE_TTL_HOURS
     
     @classmethod
-    def parse_versioned_callback(cls, callback_data: str) -> Optional[Tuple[str, ...]]:
+    async def validate_callback(
+        cls,
+        callback: CallbackQuery,
+        state: FSMContext,
+        expected_parts: int = None,
+        check_version: bool = True
+    ) -> ValidationResult:
         """
-        Парсит версионированный callback с проверкой версии.
+        Комплексная валидация callback данных
         
         Args:
-            callback_data: Строка callback_data
+            callback: CallbackQuery объект
+            state: FSMContext для проверки состояния
+            expected_parts: Ожидаемое количество частей в callback_data
+            check_version: Проверять ли версию callback
             
         Returns:
-            Tuple с (action, *args) или None если версия устарела
-            
-        Example:
-            >>> CallbackValidator.parse_versioned_callback('v2:cancel:123')
-            ('cancel', '123')
+            ValidationResult с результатом валидации
         """
-        if not callback_data or ':' not in callback_data:
-            logging.warning(f"Invalid callback format: {callback_data}")
-            return None
         
-        parts = callback_data.split(':')
-        version = parts[0]
+        # 1. Проверка версии callback (если включена)
+        if check_version and ":" in callback.data:
+            parts = callback.data.split(":")
+            version = parts[0]
+            
+            if version.startswith("v") and version != cls.CURRENT_VERSION:
+                return ValidationResult(
+                    is_valid=False,
+                    error_message="⚠️ Устаревшая кнопка\n\nИспользуйте /start для новой записи",
+                    should_disable_buttons=True,
+                    should_clear_state=True
+                )
         
-        # Проверка версии
-        if version != cls.CALLBACK_VERSION:
-            logging.warning(
-                f"Outdated callback version: {version} (current: {cls.CALLBACK_VERSION})"
+        # 2. Проверка возраста сообщения
+        message_age = datetime.now(TIMEZONE) - callback.message.date
+        if message_age.total_seconds() / 3600 > cls.MESSAGE_TTL_HOURS:
+            return ValidationResult(
+                is_valid=False,
+                error_message=f"⚠️ Сообщение устарело (старше {cls.MESSAGE_TTL_HOURS}ч)\n\nНачните заново с /start",
+                should_disable_buttons=True,
+                should_clear_state=True
             )
-            return None
         
-        # Возвращаем action и аргументы
-        return tuple(parts[1:])
+        # 3. Проверка структуры данных
+        if expected_parts:
+            actual_parts = len(callback.data.split(":"))
+            if actual_parts != expected_parts:
+                logging.warning(
+                    f"Invalid callback structure: expected {expected_parts} parts, "
+                    f"got {actual_parts} in '{callback.data}'"
+                )
+                return ValidationResult(
+                    is_valid=False,
+                    error_message="❌ Ошибка данных кнопки",
+                    should_clear_state=True
+                )
+        
+        return ValidationResult(is_valid=True)
     
     @classmethod
     async def validate_booking_callback(
-        cls, 
-        callback_data: str, 
-        user_id: int
-    ) -> Tuple[bool, Optional[dict], Optional[str]]:
+        cls,
+        callback: CallbackQuery,
+        state: FSMContext,
+        booking_id: int
+    ) -> ValidationResult:
         """
-        Валидация callback для операций с бронированием.
+        Валидация callback связанного с бронированием
         
-        Args:
-            callback_data: callback_data строка
-            user_id: ID пользователя
-            
-        Returns:
-            (is_valid, data_dict, error_message)
-            
-        Example:
-            >>> await validate_booking_callback('v2:cancel:123', 12345)
-            (True, {'action': 'cancel', 'booking_id': 123}, None)
+        Проверяет:
+        - Существование бронирования
+        - Принадлежность пользователю
+        - Актуальность временных данных
         """
-        # Парсинг версионированного callback
-        parsed = cls.parse_versioned_callback(callback_data)
         
-        if not parsed:
-            return False, None, "⚠️ Устаревшая кнопка. Используйте /start"
+        # Базовая валидация
+        base_result = await cls.validate_callback(callback, state)
+        if not base_result.is_valid:
+            return base_result
         
-        action = parsed[0]
+        # Проверка существования бронирования
+        booking = await Database.get_booking_by_id(booking_id, callback.from_user.id)
         
-        # Валидация в зависимости от действия
-        if action in ('cancel', 'reschedule', 'cancel_confirm'):
-            if len(parsed) < 2:
-                return False, None, "❌ Неверный формат данных"
-            
-            try:
-                booking_id = int(parsed[1])
-            except (ValueError, IndexError):
-                return False, None, "❌ Неверный ID записи"
-            
-            # КРИТИЧНО: Проверка существования бронирования
-            booking = await Database.get_booking_by_id(booking_id, user_id)
-            
-            if not booking:
-                return False, None, "❌ Запись не найдена или была удалена"
-            
-            date_str, time_str, username = booking
-            
-            # Проверка что запись не в прошлом
-            try:
-                booking_dt = datetime.strptime(
-                    f"{date_str} {time_str}", 
-                    "%Y-%m-%d %H:%M"
-                ).replace(tzinfo=TIMEZONE)
-                
-                if booking_dt < now_local():
-                    return False, None, "❌ Эта запись уже в прошлом"
-            except ValueError:
-                return False, None, "❌ Ошибка формата даты"
-            
-            # Для отмены - проверка временных ограничений
-            if action in ('cancel', 'cancel_confirm'):
-                can_cancel, hours_left = await Database.can_cancel_booking(
-                    date_str, time_str
-                )
-                
-                if not can_cancel:
-                    from config import CANCELLATION_HOURS
-                    return False, None, (
-                        f"⚠️ До встречи осталось {hours_left:.1f}ч\n"
-                        f"Отмена возможна за {CANCELLATION_HOURS}ч"
-                    )
-            
-            return True, {
-                'action': action,
-                'booking_id': booking_id,
-                'date': date_str,
-                'time': time_str,
-                'username': username
-            }, None
+        if not booking:
+            return ValidationResult(
+                is_valid=False,
+                error_message="❌ Запись не найдена или была удалена",
+                should_disable_buttons=True,
+                should_clear_state=True
+            )
         
-        elif action == 'confirm':
-            # confirm:date:time
-            if len(parsed) < 3:
-                return False, None, "❌ Неверный формат данных"
-            
-            date_str = parsed[1]
-            time_str = parsed[2]
-            
-            # Проверка формата даты/времени
-            try:
-                booking_dt = datetime.strptime(
-                    f"{date_str} {time_str}", 
-                    "%Y-%m-%d %H:%M"
-                ).replace(tzinfo=TIMEZONE)
-            except ValueError:
-                return False, None, "❌ Неверный формат даты/времени"
-            
-            # Проверка что время не в прошлом
-            if booking_dt < now_local():
-                return False, None, "❌ Нельзя выбрать прошедшее время"
-            
-            # КРИТИЧНО: Проверка что слот свободен
-            is_free = await Database.is_slot_free(date_str, time_str)
-            
-            if not is_free:
-                return False, None, "❌ Этот слот уже занят"
-            
-            return True, {
-                'action': action,
-                'date': date_str,
-                'time': time_str
-            }, None
+        date_str, time_str, username = booking
         
-        elif action == 'select_service':
-            if len(parsed) < 2:
-                return False, None, "❌ Неверный формат"
-            
-            try:
-                service_id = int(parsed[1])
-            except ValueError:
-                return False, None, "❌ Неверный ID услуги"
-            
-            # Проверка существования и активности услуги
-            from database.repositories.service_repository import ServiceRepository
-            service = await ServiceRepository.get_service_by_id(service_id)
-            
-            if not service or not service.is_active:
-                return False, None, "❌ Услуга недоступна"
-            
-            return True, {
-                'action': action,
-                'service_id': service_id,
-                'service': service
-            }, None
+        # Проверка что запись не в прошлом
+        from utils.helpers import now_local
+        booking_datetime = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+        booking_datetime = TIMEZONE.localize(booking_datetime)
         
-        # Другие действия (день, месяц, время) - базовая валидация
-        return True, {'action': action, 'params': parsed[1:]}, None
+        if booking_datetime < now_local():
+            return ValidationResult(
+                is_valid=False,
+                error_message="❌ Эта запись уже прошла",
+                should_disable_buttons=True,
+                should_clear_state=True
+            )
+        
+        return ValidationResult(
+            is_valid=True,
+            data={
+                "booking_id": booking_id,
+                "date": date_str,
+                "time": time_str,
+                "username": username
+            }
+        )
     
     @classmethod
-    async def validate_and_cleanup_old_message(
+    async def validate_service_callback(
         cls,
-        message,
-        max_age_hours: int = 24
-    ) -> bool:
+        callback: CallbackQuery,
+        state: FSMContext,
+        service_id: int
+    ) -> ValidationResult:
         """
-        Проверяет возраст сообщения и удаляет клавиатуру если устарело.
+        Валидация callback связанного с услугой
         
-        Args:
-            message: Message объект
-            max_age_hours: Максимальный возраст в часах
-            
-        Returns:
-            True если сообщение актуально, False если устарело
+        Проверяет:
+        - Существование услуги
+        - Активность услуги
         """
-        if not message or not message.date:
-            return False
         
-        message_age = now_local() - message.date
-        max_age_seconds = max_age_hours * 3600
+        # Базовая валидация
+        base_result = await cls.validate_callback(callback, state)
+        if not base_result.is_valid:
+            return base_result
         
-        if message_age.total_seconds() > max_age_seconds:
+        # Проверка существования услуги
+        service = await ServiceRepository.get_service_by_id(service_id)
+        
+        if not service:
+            return ValidationResult(
+                is_valid=False,
+                error_message="❌ Услуга не найдена",
+                should_clear_state=True
+            )
+        
+        if not service.is_active:
+            return ValidationResult(
+                is_valid=False,
+                error_message="❌ Выбранная услуга больше недоступна\n\nВыберите другую",
+                should_clear_state=True
+            )
+        
+        return ValidationResult(
+            is_valid=True,
+            data={
+                "service": service,
+                "service_id": service_id
+            }
+        )
+    
+    @classmethod
+    async def validate_slot_callback(
+        cls,
+        callback: CallbackQuery,
+        state: FSMContext,
+        date_str: str,
+        time_str: str
+    ) -> ValidationResult:
+        """
+        Валидация callback связанного со слотом времени
+        
+        Проверяет:
+        - Формат даты/времени
+        - Дата не в прошлом
+        - Слот свободен
+        - Слот не заблокирован
+        """
+        
+        # Базовая валидация
+        base_result = await cls.validate_callback(callback, state)
+        if not base_result.is_valid:
+            return base_result
+        
+        # Валидация формата даты
+        try:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            time_obj = datetime.strptime(time_str, "%H:%M")
+        except ValueError:
+            return ValidationResult(
+                is_valid=False,
+                error_message="❌ Неверный формат даты/времени",
+                should_clear_state=True
+            )
+        
+        # Проверка что дата не в прошлом
+        from utils.helpers import now_local
+        slot_datetime = datetime.combine(date_obj.date(), time_obj.time())
+        slot_datetime = TIMEZONE.localize(slot_datetime)
+        
+        if slot_datetime < now_local():
+            return ValidationResult(
+                is_valid=False,
+                error_message="❌ Выбрано прошедшее время\n\nВыберите актуальную дату",
+                should_clear_state=True
+            )
+        
+        # Проверка что слот свободен
+        is_free = await Database.is_slot_free(date_str, time_str)
+        
+        if not is_free:
+            return ValidationResult(
+                is_valid=False,
+                error_message="❌ Этот слот уже занят\n\nВыберите другое время",
+                should_disable_buttons=False  # Не отключаем - пользователь может выбрать другой
+            )
+        
+        return ValidationResult(
+            is_valid=True,
+            data={
+                "date": date_str,
+                "time": time_str,
+                "datetime": slot_datetime
+            }
+        )
+    
+    @classmethod
+    async def handle_validation_error(
+        cls,
+        callback: CallbackQuery,
+        state: FSMContext,
+        result: ValidationResult
+    ):
+        """
+        Обработка ошибки валидации
+        
+        - Показывает сообщение пользователю
+        - Отключает кнопки если нужно
+        - Очищает состояние если нужно
+        """
+        
+        # Показываем сообщение об ошибке
+        await callback.answer(result.error_message or "❌ Ошибка", show_alert=True)
+        
+        # Отключаем кнопки если требуется
+        if result.should_disable_buttons:
             try:
-                await message.edit_reply_markup(reply_markup=None)
-                logging.info(
-                    f"Removed keyboard from old message (age: {message_age})"
-                )
+                await callback.message.edit_reply_markup(reply_markup=None)
             except Exception as e:
-                logging.warning(f"Failed to remove old keyboard: {e}")
+                logging.debug(f"Could not disable buttons: {e}")
+        
+        # Очищаем состояние если требуется
+        if result.should_clear_state:
+            await state.clear()
             
-            return False
-        
-        return True
-    
-    @classmethod
-    def create_state_hash(cls, **kwargs) -> str:
-        """
-        Создает хеш для проверки целостности состояния.
-        
-        Используется для обнаружения подмены данных в FSM state.
-        
-        Example:
-            >>> hash1 = CallbackValidator.create_state_hash(
-            ...     booking_id=123, user_id=456
-            ... )
-            >>> # Позже проверяем
-            >>> hash2 = CallbackValidator.create_state_hash(
-            ...     booking_id=123, user_id=456
-            ... )
-            >>> hash1 == hash2
-            True
-        """
-        # Сортируем ключи для стабильности
-        sorted_items = sorted(kwargs.items())
-        data_string = ":".join(f"{k}={v}" for k, v in sorted_items)
-        return hashlib.sha256(data_string.encode()).hexdigest()[:16]
-    
-    @classmethod
-    async def validate_state_integrity(
-        cls,
-        state_data: dict,
-        expected_hash: Optional[str] = None
-    ) -> bool:
-        """
-        Проверяет целостность данных FSM state.
-        
-        Args:
-            state_data: Данные из FSM
-            expected_hash: Ожидаемый хеш (если None - создает новый)
-            
-        Returns:
-            True если данные не изменены
-        """
-        if not state_data:
-            return False
-        
-        # Исключаем системные поля
-        filtered_data = {
-            k: v for k, v in state_data.items() 
-            if not k.startswith('_')
-        }
-        
-        current_hash = cls.create_state_hash(**filtered_data)
-        
-        if expected_hash:
-            return current_hash == expected_hash
-        
-        # Если expected_hash не передан, считаем что это первая проверка
-        return True
-
-
-# Утилиты для быстрого использования
-
-async def validate_booking_action(callback_data: str, user_id: int):
-    """
-    Удобная обертка для валидации действий с бронированием.
-    
-    Usage в handlers:
-        valid, data, error = await validate_booking_action(
-            callback.data, 
-            callback.from_user.id
+        logging.info(
+            f"Validation failed for user {callback.from_user.id}: "
+            f"callback='{callback.data}', error='{result.error_message}'"
         )
-        if not valid:
-            await callback.answer(error, show_alert=True)
-            return
-    """
-    return await CallbackValidator.validate_booking_callback(
-        callback_data, 
-        user_id
-    )
 
 
-def create_safe_callback(action: str, *args) -> str:
+# Утилита для быстрого парсинга callback_data
+def parse_callback_parts(callback_data: str, expected_parts: int = None) -> Optional[list]:
     """
-    Удобная обертка для создания безопасных callback.
+    Безопасный парсинг callback_data
     
-    Usage в keyboards:
-        InlineKeyboardButton(
-            text="Отменить",
-            callback_data=create_safe_callback('cancel', booking_id)
-        )
+    Args:
+        callback_data: Строка callback данных
+        expected_parts: Ожидаемое количество частей
+        
+    Returns:
+        Список частей или None если структура неверна
     """
-    return CallbackValidator.create_versioned_callback(action, *args)
+    if not callback_data:
+        return None
+    
+    parts = callback_data.split(":")
+    
+    if expected_parts and len(parts) != expected_parts:
+        return None
+    
+    return parts

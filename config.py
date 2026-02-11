@@ -47,6 +47,10 @@ SERVICE_LOCATION = "г. Москва, ул. Примерная, 1 / Онлайн
 # Временная зона (ИСПРАВЛЕНО: используем pytz для корректной обработки DST)
 TIMEZONE = pytz.timezone("Europe/Moscow")
 
+# === ✅ PRIORITY 1: ВЕРСИОНИРОВАНИЕ CALLBACK И ВАЛИДАЦИЯ ===
+CALLBACK_VERSION = "v3"  # Увеличивать при breaking changes в callback_data
+CALLBACK_MESSAGE_TTL_HOURS = 48  # Время жизни интерактивных сообщений (часы)
+
 # Тайминги и задержки (в секундах)
 ONBOARDING_DELAY_SHORT = 1.0  # Короткая задержка между сообщениями
 ONBOARDING_DELAY_LONG = 1.0   # ✅ ИЗМЕНЕНО: с 4.0 до 1.0 секунды
