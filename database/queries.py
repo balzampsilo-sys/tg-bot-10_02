@@ -36,6 +36,7 @@ class Database:
                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date TEXT, time TEXT, user_id INTEGER, username TEXT,
                 created_at TEXT, service_id INTEGER DEFAULT 1,
+                duration_minutes INTEGER DEFAULT 60,
                 UNIQUE(date, time))"""
             )
 
@@ -106,8 +107,17 @@ class Database:
                             "ALTER TABLE bookings ADD COLUMN service_id INTEGER DEFAULT 1"
                         )
                         logging.info("✅ service_id добавлен")
+                    
+                    if "duration_minutes" not in column_names:
+                        logging.info(
+                            "🔄 Добавляем duration_minutes в существующую таблицу bookings..."
+                        )
+                        await db.execute(
+                            "ALTER TABLE bookings ADD COLUMN duration_minutes INTEGER DEFAULT 60"
+                        )
+                        logging.info("✅ duration_minutes добавлен")
             except Exception as e:
-                logging.warning(f"⚠️ Не удалось добавить service_id: {e}")
+                logging.warning(f"⚠️ Не удалось добавить колонки: {e}")
 
             # Low Priority: Добавляем role если его нет
             try:
