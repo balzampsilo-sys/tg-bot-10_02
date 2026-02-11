@@ -126,12 +126,40 @@ class BookingRepository(BaseRepository):
 
     @staticmethod
     async def get_user_bookings(user_id: int) -> List[Tuple]:
-        """Получить активные (будущие) записи пользователя"""
+        """Получить активные (будущие) записи пользователя С ИНФОРМАЦИЕЙ ОБ УСЛУГЕ
+        
+        Returns:
+            List[Tuple[
+                booking_id: int,
+                date: str,
+                time: str,
+                username: str,
+                created_at: str,
+                service_id: int,
+                service_name: str,
+                duration_minutes: int,
+                price: str
+            ]]
+        """
         try:
             now = now_local()
+            
+            # ✅ P2: ДОБАВЛЕН JOIN с services для получения полной информации
             bookings = await BookingRepository._execute_query(
-                "SELECT id, date, time, username, created_at FROM bookings "
-                "WHERE user_id=? ORDER BY date, time",
+                """SELECT 
+                    b.id,
+                    b.date,
+                    b.time,
+                    b.username,
+                    b.created_at,
+                    b.service_id,
+                    COALESCE(s.name, 'Основная услуга') as service_name,
+                    COALESCE(s.duration_minutes, 60) as duration_minutes,
+                    COALESCE(s.price, '—') as price
+                FROM bookings b
+                LEFT JOIN services s ON b.service_id = s.id
+                WHERE b.user_id = ?
+                ORDER BY b.date, b.time""",
                 (user_id,),
                 fetch_all=True,
             )
@@ -141,16 +169,16 @@ class BookingRepository(BaseRepository):
 
             # Фильтруем только будущие
             future_bookings = []
-            for booking_id, date_str, time_str, username, created_at in bookings:
+            for booking in bookings:
+                booking_id, date_str, time_str = booking[0], booking[1], booking[2]
+                
                 booking_dt_naive = datetime.strptime(
                     f"{date_str} {time_str}", "%Y-%m-%d %H:%M"
                 )
                 booking_dt = TIMEZONE.localize(booking_dt_naive)
 
                 if booking_dt >= now:
-                    future_bookings.append(
-                        (booking_id, date_str, time_str, username, created_at)
-                    )
+                    future_bookings.append(booking)
 
             return future_bookings
         except Exception as e:
@@ -236,19 +264,25 @@ class BookingRepository(BaseRepository):
 
     @staticmethod
     async def get_week_schedule(start_date: str, days: int = 7) -> List[Tuple]:
-        """Получить расписание на N дней
+        """Получить расписание на N дней с услугами
         
         Returns:
-            List[Tuple[date, time, username, service_name]]
+            List[Tuple[date, time, username, service_name, duration, price]]
         """
         try:
             end_date = (
                 datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=days)
             ).strftime("%Y-%m-%d")
 
-            # ✅ ДОБАВЛЕН: JOIN с services для получения названия услуги
+            # ✅ P2: ДОБАВЛЕНА длительность и цена
             return await BookingRepository._execute_query(
-                """SELECT b.date, b.time, b.username, COALESCE(s.name, 'Услуга') as service_name
+                """SELECT 
+                    b.date,
+                    b.time,
+                    b.username,
+                    COALESCE(s.name, 'Услуга') as service_name,
+                    COALESCE(s.duration_minutes, 60) as duration,
+                    COALESCE(s.price, '—') as price
                 FROM bookings b
                 LEFT JOIN services s ON b.service_id = s.id
                 WHERE b.date >= ? AND b.date <= ?
