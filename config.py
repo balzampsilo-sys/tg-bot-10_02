@@ -28,6 +28,9 @@ MAX_ADMIN_ADDITIONS_PER_HOUR = int(os.getenv("MAX_ADMIN_ADDITIONS_PER_HOUR", "3"
 MAX_BOOKINGS_PER_USER = int(os.getenv("MAX_BOOKINGS_PER_USER", "3"))
 CANCELLATION_HOURS = int(os.getenv("CANCELLATION_HOURS", "24"))
 
+# === FEEDBACK ===
+FEEDBACK_HOURS_AFTER = int(os.getenv("FEEDBACK_HOURS_AFTER", "2"))  # ✅ ADDED: Часы после записи для фидбэка
+
 # === WORK SCHEDULE ===
 WORK_HOURS_START = int(os.getenv("WORK_HOURS_START", "9"))
 WORK_HOURS_END = int(os.getenv("WORK_HOURS_END", "18"))
@@ -45,7 +48,7 @@ BACKUP_RETENTION_DAYS = int(os.getenv("BACKUP_RETENTION_DAYS", "30"))
 BROADCAST_DELAY = float(os.getenv("BROADCAST_DELAY", "0.05"))  # Задержка между сообщениями (сек)
 
 # === CALENDAR ===
-CALENDAR_MAX_MONTHS_AHEAD = int(os.getenv("CALENDAR_MAX_MONTHS_AHEAD", "3"))  # ✅ ADDED
+CALENDAR_MAX_MONTHS_AHEAD = int(os.getenv("CALENDAR_MAX_MONTHS_AHEAD", "3"))
 
 # === TIMEZONE ===
 TIMEZONE = timezone(timedelta(hours=3))  # MSK
@@ -61,10 +64,10 @@ DAY_NAMES = [
     "Вс",  # Sunday
 ]
 
-# ✅ ADDED: Короткие названия дней
+# Короткие названия дней
 DAY_NAMES_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
-# ✅ ADDED: Названия месяцев
+# Названия месяцев
 MONTH_NAMES = [
     "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
     "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
