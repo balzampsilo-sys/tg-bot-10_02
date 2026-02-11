@@ -283,6 +283,84 @@ class BookingRepository(BaseRepository):
             return False
 
     @staticmethod
+    async def block_slot_with_notification(
+        date_str: str, time_str: str, admin_id: int, reason: str = None
+    ) -> Tuple[bool, List[Dict]]:
+        """
+        Заблокировать слот с уведомлением пользователей.
+        
+        Если слот занят - удаляет бронь и возвращает данные для уведомления.
+        
+        Args:
+            date_str: Дата в формате YYYY-MM-DD
+            time_str: Время в формате HH:MM
+            admin_id: ID администратора
+            reason: Причина блокировки
+            
+        Returns:
+            Tuple[success: bool, cancelled_users: List[Dict]]
+            cancelled_users = [{
+                'user_id': int,
+                'username': str,
+                'date': str,
+                'time': str,
+                'reason': str
+            }]
+        """
+        try:
+            async with aiosqlite.connect(DATABASE_PATH) as db:
+                # Проверяем существующие записи
+                async with db.execute(
+                    "SELECT user_id, username FROM bookings WHERE date=? AND time=?",
+                    (date_str, time_str),
+                ) as cursor:
+                    existing_bookings = await cursor.fetchall()
+
+                cancelled_users = []
+                
+                # Если есть записи - удаляем их
+                if existing_bookings:
+                    for user_id, username in existing_bookings:
+                        cancelled_users.append({
+                            'user_id': user_id,
+                            'username': username or f"ID{user_id}",
+                            'date': date_str,
+                            'time': time_str,
+                            'reason': reason
+                        })
+                    
+                    # Удаляем бронь
+                    await db.execute(
+                        "DELETE FROM bookings WHERE date=? AND time=?",
+                        (date_str, time_str)
+                    )
+                    logging.info(
+                        f"Cancelled {len(cancelled_users)} booking(s) for slot {date_str} {time_str}"
+                    )
+
+                # Блокируем слот
+                await db.execute(
+                    "INSERT INTO blocked_slots (date, time, reason, blocked_by, blocked_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (date_str, time_str, reason, admin_id, now_local().isoformat()),
+                )
+                await db.commit()
+                
+                logging.info(
+                    f"Slot {date_str} {time_str} blocked by admin {admin_id} "
+                    f"with {len(cancelled_users)} cancellations"
+                )
+                
+                return True, cancelled_users
+                
+        except aiosqlite.IntegrityError:
+            logging.warning(f"Slot {date_str} {time_str} already blocked")
+            return False, []
+        except Exception as e:
+            logging.error(f"Error blocking slot with notification {date_str} {time_str}: {e}")
+            return False, []
+
+    @staticmethod
     async def unblock_slot(date_str: str, time_str: str) -> bool:
         """Разблокировать слот"""
         try:
