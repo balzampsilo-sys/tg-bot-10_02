@@ -1,117 +1,91 @@
-"""Конфигурация приложения"""
+"""Configuration"""
 
 import os
-import re
+import sys
+from datetime import timezone, timedelta
+from pathlib import Path
 
-import pytz
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Telegram
+# === BOT ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-# Админы (поддержка нескольких)
-ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
-if not ADMIN_IDS_STR:
-    raise ValueError("ADMIN_IDS not found in .env file")
-
-ADMIN_IDS = [int(id.strip()) for id in ADMIN_IDS_STR.split(",") if id.strip()]
-
-# Валидация токена бота
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN not found in .env file")
+    sys.exit("❌ BOT_TOKEN not found in .env")
 
-# Проверка формата токена Telegram: 123456789:ABCdef_1234567890ABCdef
-if not re.match(r'^\d{8,10}:[A-Za-z0-9_-]{35}$', BOT_TOKEN):
-    raise ValueError(
-        "Invalid BOT_TOKEN format. Expected format: 123456789:ABCdef_123..."
-    )
+# === ADMIN ===
+ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
+ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_STR.split(",") if x.strip()]
 
 if not ADMIN_IDS:
-    raise ValueError("No valid admin IDs provided")
+    sys.exit("❌ ADMIN_IDS not found in .env")
 
-# База данных
-DATABASE_PATH = "bookings.db"
+# ✅ NEW: Rate limit для добавления админов
+MAX_ADMIN_ADDITIONS_PER_HOUR = int(os.getenv("MAX_ADMIN_ADDITIONS_PER_HOUR", "3"))
 
-# Настройки бронирования
-MAX_BOOKINGS_PER_USER = 3
-CANCELLATION_HOURS = 24
-WORK_HOURS_START = 7   # ✅ ИЗМЕНЕНО: с 9 до 7
-WORK_HOURS_END = 22    # ✅ ИЗМЕНЕНО: с 19 до 22
+# === BOOKINGS ===
+MAX_BOOKINGS_PER_USER = int(os.getenv("MAX_BOOKINGS_PER_USER", "3"))
+CANCELLATION_HOURS = int(os.getenv("CANCELLATION_HOURS", "24"))
 
-# ✅ DEPRECATED: Услуги теперь управляются через БД и админ-панель
-# Оставлено для обратной совместимости в напоминаниях
-SERVICE_LOCATION = "г. Москва, ул. Примерная, 1 / Онлайн"
+# === WORK SCHEDULE ===
+WORK_HOURS_START = int(os.getenv("WORK_HOURS_START", "9"))
+WORK_HOURS_END = int(os.getenv("WORK_HOURS_END", "18"))
 
-# Временная зона (ИСПРАВЛЕНО: используем pytz для корректной обработки DST)
-TIMEZONE = pytz.timezone("Europe/Moscow")
+# === DATABASE ===
+DATABASE_PATH = os.getenv("DATABASE_PATH", "bookings.db")
 
-# === ✅ PRIORITY 1: ВЕРСИОНИРОВАНИЕ CALLBACK И ВАЛИДАЦИЯ ===
-CALLBACK_VERSION = "v3"  # Увеличивать при breaking changes в callback_data
-CALLBACK_MESSAGE_TTL_HOURS = 48  # Время жизни интерактивных сообщений (часы)
+# === BACKUP ===
+BACKUP_DIR = os.getenv("BACKUP_DIR", "backups")
+BACKUP_INTERVAL_HOURS = int(os.getenv("BACKUP_INTERVAL_HOURS", "24"))
+BACKUP_RETENTION_DAYS = int(os.getenv("BACKUP_RETENTION_DAYS", "30"))
 
-# Тайминги и задержки (в секундах)
-ONBOARDING_DELAY_SHORT = 1.0  # Короткая задержка между сообщениями
-ONBOARDING_DELAY_LONG = 1.0   # ✅ ИЗМЕНЕНО: с 4.0 до 1.0 секунды
-BROADCAST_DELAY = 0.05        # Задержка между сообщениями в рассылке (50ms)
-RATE_LIMIT_TIME = 1.0         # Время между действиями одного пользователя
+# === TIMEZONE ===
+TIMEZONE = timezone(timedelta(hours=3))  # MSK
 
-# FSM таймауты (в секундах)
-FSM_STATE_TTL = 600  # 10 минут - автоматический сброс состояния
-
-# Ограничения навигации календаря
-CALENDAR_MAX_MONTHS_AHEAD = 3  # Максимум месяцев вперёд для бронирования
-
-# === КОНСТАНТЫ ВРЕМЕНИ (в часах) ===
-REMINDER_HOURS_BEFORE_24H = 24  # Напоминание за 24 часа
-REMINDER_HOURS_BEFORE_2H = 2    # Напоминание за 2 часа
-REMINDER_HOURS_BEFORE_1H = 1    # Напоминание за 1 час
-FEEDBACK_HOURS_AFTER = 2        # Запрос обратной связи через 2 часа после встречи
-
-# === НАСТРОЙКИ РЕЗЕРВНОГО КОПИРОВАНИЯ ===
-BACKUP_ENABLED = os.getenv("BACKUP_ENABLED", "true").lower() == "true"
-BACKUP_INTERVAL_HOURS = int(os.getenv("BACKUP_INTERVAL_HOURS", "1"))  # ✅ ИЗМЕНЕНО: каждый 1 час
-BACKUP_RETENTION_DAYS = int(os.getenv("BACKUP_RETENTION_DAYS", "30"))  # Хранить 30 дней
-BACKUP_DIR = os.getenv("BACKUP_DIR", "backups")  # Директория для бэкапов
-
-# === КОДЫ ОШИБОК БРОНИРОВАНИЯ ===
-ERROR_NO_SERVICES = "no_services"              # Нет доступных услуг
-ERROR_SERVICE_UNAVAILABLE = "service_not_available"  # Услуга недоступна
-ERROR_LIMIT_EXCEEDED = "limit_exceeded"        # Превышен лимит записей
-ERROR_SLOT_TAKEN = "slot_taken"                # Слот занят
-ERROR_UNKNOWN = "unknown_error"                # Неизвестная ошибка
-ERROR_SUCCESS = "success"                      # Успешно
-
-# === ПАГИНАЦИЯ ===
-DEFAULT_PAGE_SIZE = 20   # Размер страницы по умолчанию
-MAX_PAGE_SIZE = 100      # Максимальный размер страницы
-
-# Названия месяцев
-MONTH_NAMES = [
-    "Январь",
-    "Февраль",
-    "Март",
-    "Апрель",
-    "Май",
-    "Июнь",
-    "Июль",
-    "Август",
-    "Сентябрь",
-    "Октябрь",
-    "Ноябрь",
-    "Декабрь",
-]
-
-# Названия дней недели
+# === DAY NAMES ===
 DAY_NAMES = [
-    "понедельник",
-    "вторник",
-    "среду",
-    "четверг",
-    "пятницу",
-    "субботу",
-    "воскресенье",
+    "Пн",  # Monday
+    "Вт",  # Tuesday
+    "Ср",  # Wednesday
+    "Чт",  # Thursday
+    "Пт",  # Friday
+    "Сб",  # Saturday
+    "Вс",  # Sunday
 ]
 
-DAY_NAMES_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+# === CALLBACK VALIDATION (Priority 1) ===
+CALLBACK_VERSION = "v3"
+CALLBACK_MESSAGE_TTL_HOURS = 48
+
+# === ERROR CODES (Priority 2) ===
+ERROR_NO_SERVICES = "NO_SERVICES"
+ERROR_SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
+ERROR_LIMIT_EXCEEDED = "LIMIT_EXCEEDED"
+ERROR_SLOT_TAKEN = "SLOT_TAKEN"
+
+# === ADMIN ROLES (Low Priority) ===
+ROLE_SUPER_ADMIN = "super_admin"
+ROLE_MODERATOR = "moderator"
+
+ADMIN_ROLES = [ROLE_SUPER_ADMIN, ROLE_MODERATOR]
+
+# Права доступа по ролям
+ROLE_PERMISSIONS = {
+    ROLE_SUPER_ADMIN: {
+        "manage_admins": True,
+        "view_audit_log": True,
+        "manage_bookings": True,
+        "manage_slots": True,
+        "edit_services": True,
+        "export_data": True,
+    },
+    ROLE_MODERATOR: {
+        "manage_admins": False,
+        "view_audit_log": False,
+        "manage_bookings": True,
+        "manage_slots": True,
+        "edit_services": True,
+        "export_data": False,
+    },
+}
