@@ -24,14 +24,15 @@ from database.migrations.versions.v004_add_services import AddServicesBackwardCo
 from handlers import (
     admin_handlers,
     admin_management_handlers,
+    audit_handlers,  # ✅ ADDED: Audit log handlers
     booking_handlers,
     mass_edit_handlers,
     service_management_handlers,
     user_handlers,
-    universal_editor,  # ✅ P4: Universal Field Editor
+    universal_editor,
 )
 from middlewares.rate_limit import RateLimitMiddleware
-from middlewares.message_cleanup import MessageCleanupMiddleware  # ✅ P3: Auto-cleanup
+from middlewares.message_cleanup import MessageCleanupMiddleware
 from services.booking_service import BookingService
 from services.notification_service import NotificationService
 from utils.backup_service import BackupService
@@ -218,13 +219,14 @@ async def start_bot():
     dp.callback_query.middleware(RateLimitMiddleware(rate_limit=0.3))  # 0.3 сек между callback
 
     # Регистрация роутеров (ВАЖЕН ПОРЯДОК!)
-    dp.include_router(universal_editor.router)            # ✅ P4: Универсальный редактор (ПЕРВЫМ!)
-    dp.include_router(service_management_handlers.router)  # 1. Управление услугами
-    dp.include_router(admin_management_handlers.router)    # 2. Управление админами
-    dp.include_router(mass_edit_handlers.router)          # 3. Массовое редактирование
-    dp.include_router(admin_handlers.router)              # 4. Админ
-    dp.include_router(booking_handlers.router)            # 5. Бронирования
-    dp.include_router(user_handlers.router)               # 6. Пользователи последним (catch-all)
+    dp.include_router(universal_editor.router)            # ✅ P4: Универсальный редактор
+    dp.include_router(service_management_handlers.router)  # Управление услугами
+    dp.include_router(admin_management_handlers.router)    # Управление админами
+    dp.include_router(audit_handlers.router)              # ✅ ADDED: Audit log (/audit)
+    dp.include_router(mass_edit_handlers.router)          # Массовое редактирование
+    dp.include_router(admin_handlers.router)              # Админ
+    dp.include_router(booking_handlers.router)            # Бронирования
+    dp.include_router(user_handlers.router)               # Пользователи последним
 
     # Восстановление напоминаний
     await booking_service.restore_reminders()
@@ -232,11 +234,12 @@ async def start_bot():
     # Запуск планировщика
     scheduler.start()
 
-    logging.info("🚀 Bot started with all Priority features:")
-    logging.info("   ✅ P1: Callback Validation (ready for integration)")
-    logging.info("   ✅ P2: Services Display (in booking_repository)")
-    logging.info("   ✅ P3: MessageCleanupMiddleware (active)")
-    logging.info("   ✅ P4: Universal Field Editor (active)")
+    logging.info("🚀 Bot started with all features:")
+    logging.info("   ✅ Priority 2: Services Display")
+    logging.info("   ✅ Priority 3: MessageCleanup Middleware")
+    logging.info("   ✅ Priority 4: Universal Field Editor")
+    logging.info("   ✅ Low Priority: Admin Roles & Audit Log")
+    logging.info("   ✅ Low Priority: Rate Limiting")
 
     try:
         await dp.start_polling(bot, skip_updates=True)
