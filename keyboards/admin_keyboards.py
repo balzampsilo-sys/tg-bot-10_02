@@ -11,7 +11,10 @@ ADMIN_MENU = ReplyKeyboardMarkup(
             KeyboardButton(text="⚡ Массовые операции"),
         ],
         [
+            KeyboardButton(text="👥 Администраторы"),
             KeyboardButton(text="📊 Экспорт данных"),
+        ],
+        [
             KeyboardButton(text="🔙 Выход из админки"),
         ],
     ],
