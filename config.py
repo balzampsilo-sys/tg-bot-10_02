@@ -1,4 +1,4 @@
-"""Configuration"""
+"""Конфигурация"""
 
 import os
 import sys
@@ -38,6 +38,10 @@ FEEDBACK_HOURS_AFTER = int(os.getenv("FEEDBACK_HOURS_AFTER", "2"))
 
 # === SERVICE INFO ===
 SERVICE_LOCATION = os.getenv("SERVICE_LOCATION", "Москва, ул. Примерная, 1")
+
+# === ONBOARDING ✅ ADDED ===
+ONBOARDING_DELAY_SHORT = float(os.getenv("ONBOARDING_DELAY_SHORT", "1.5"))  # секунды
+ONBOARDING_DELAY_LONG = float(os.getenv("ONBOARDING_DELAY_LONG", "3.0"))   # секунды
 
 # === WORK SCHEDULE ===
 WORK_HOURS_START = int(os.getenv("WORK_HOURS_START", "9"))
