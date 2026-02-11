@@ -5,9 +5,17 @@ from aiogram.fsm.state import State, StatesGroup
 
 class AdminStates(StatesGroup):
     """Состояния для администраторов"""
+    # Управление админами
     awaiting_new_admin_id = State()
     awaiting_admin_username = State()
-    awaiting_broadcast_message = State()  # ✅ ADDED: Для рассылки
+    
+    # Рассылка
+    awaiting_broadcast_message = State()
+    
+    # ✅ ADDED: Блокировка слотов
+    awaiting_block_date = State()
+    awaiting_block_time = State()
+    awaiting_block_reason = State()
 
 
 class FieldEditStates(StatesGroup):
