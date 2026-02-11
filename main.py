@@ -8,7 +8,14 @@ from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
 from aiogram.fsm.storage.memory import MemoryStorage
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from config import BOT_TOKEN, DATABASE_PATH
+from config import (
+    BOT_TOKEN, 
+    DATABASE_PATH,
+    BACKUP_ENABLED,
+    BACKUP_INTERVAL_HOURS,
+    BACKUP_DIR,
+    BACKUP_RETENTION_DAYS
+)
 from database.queries import Database
 from database.migrations.migration_manager import MigrationManager
 from database.migrations.versions.v004_add_services import AddServicesBackwardCompatible
@@ -16,6 +23,7 @@ from handlers import admin_handlers, booking_handlers, user_handlers, service_ma
 from middlewares.rate_limit import RateLimitMiddleware
 from services.booking_service import BookingService
 from services.notification_service import NotificationService
+from utils.backup_service import BackupService
 from utils.retry import async_retry
 
 logging.basicConfig(
@@ -38,6 +46,34 @@ async def init_database():
     await manager.migrate()
     
     logging.info("✅ Database initialized with migrations")
+
+
+def setup_backup_job(scheduler: AsyncIOScheduler, backup_service: BackupService):
+    """
+    Настройка периодического резервного копирования.
+    """
+    if not BACKUP_ENABLED:
+        logging.info("⚠️ Backup disabled in config")
+        return
+    
+    def backup_job():
+        """Wrapper для синхронного вызова"""
+        backup_service.create_backup()
+    
+    # Добавляем задачу в планировщик
+    scheduler.add_job(
+        backup_job,
+        'interval',
+        hours=BACKUP_INTERVAL_HOURS,
+        id='database_backup',
+        replace_existing=True,
+        max_instances=1
+    )
+    
+    logging.info(
+        f"💾 Backup scheduled: every {BACKUP_INTERVAL_HOURS}h, "
+        f"retention: {BACKUP_RETENTION_DAYS} days"
+    )
 
 
 @async_retry(
@@ -67,6 +103,20 @@ async def start_bot():
 
     # Инициализация БД
     await init_database()
+
+    # ✅ Сервис резервного копирования
+    if BACKUP_ENABLED:
+        backup_service = BackupService(
+            db_path=DATABASE_PATH,
+            backup_dir=BACKUP_DIR,
+            retention_days=BACKUP_RETENTION_DAYS
+        )
+        # Создаём начальный бэкап при старте
+        backup_service.create_backup()
+        # Настраиваем периодическое копирование
+        setup_backup_job(scheduler, backup_service)
+        # Сохраняем в dispatcher для доступа из handlers
+        dp["backup_service"] = backup_service
 
     # Сервисы
     booking_service = BookingService(scheduler, bot)
