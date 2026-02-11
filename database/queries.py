@@ -7,6 +7,7 @@ import aiosqlite
 
 from config import DATABASE_PATH
 from database.repositories import (
+    AdminRepository,
     AnalyticsRepository,
     BookingRepository,
     ClientStats,
@@ -69,6 +70,15 @@ class Database:
                 (user_id INTEGER PRIMARY KEY, message_id INTEGER, updated_at TEXT)"""
             )
 
+            # ✅ Sprint 3: Таблица администраторов
+            await db.execute(
+                """CREATE TABLE IF NOT EXISTS admins
+                (user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                added_by INTEGER,
+                added_at TEXT NOT NULL)"""
+            )
+
             # ✅ P2: Миграция - добавляем service_id если его еще нет
             try:
                 async with db.execute("PRAGMA table_info(bookings)") as cursor:
@@ -124,6 +134,10 @@ class Database:
             await db.execute(
                 """CREATE INDEX IF NOT EXISTS idx_bookings_date_time
                 ON bookings(date, time)"""
+            )
+            await db.execute(
+                """CREATE INDEX IF NOT EXISTS idx_admins_added
+                ON admins(added_at)"""
             )
 
             await db.commit()
@@ -254,7 +268,6 @@ class Database:
     @staticmethod
     async def get_day_status(date_str: str) -> str:
         """Статус загрузки дня (🟢🟡🔴)"""
-        # Оставляем здесь, так как используется редко
         occupied = await BookingRepository.get_occupied_slots_for_day(date_str)
         from config import WORK_HOURS_END, WORK_HOURS_START
 
@@ -303,3 +316,34 @@ class Database:
     @staticmethod
     async def get_top_clients(limit: int = 10) -> List[Tuple]:
         return await AnalyticsRepository.get_top_clients(limit)
+
+    # === АДМИНИСТРАТОРЫ (делегирование в AdminRepository) ===
+
+    @staticmethod
+    async def get_all_admins() -> List[Tuple[int, str, str, str]]:
+        """Получить всех администраторов"""
+        return await AdminRepository.get_all_admins()
+
+    @staticmethod
+    async def is_admin_in_db(user_id: int) -> bool:
+        """Проверить админа в БД"""
+        return await AdminRepository.is_admin(user_id)
+
+    @staticmethod
+    async def add_admin(
+        user_id: int, 
+        username: Optional[str] = None, 
+        added_by: Optional[int] = None
+    ) -> bool:
+        """Добавить администратора"""
+        return await AdminRepository.add_admin(user_id, username, added_by)
+
+    @staticmethod
+    async def remove_admin(user_id: int) -> bool:
+        """Удалить администратора"""
+        return await AdminRepository.remove_admin(user_id)
+
+    @staticmethod
+    async def get_admin_count() -> int:
+        """Количество админов"""
+        return await AdminRepository.get_admin_count()
