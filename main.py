@@ -19,6 +19,8 @@ from config import (
     BACKUP_RETENTION_DAYS,
     BOT_TOKEN,
     DATABASE_PATH,
+    RATE_LIMIT_CALLBACK,
+    RATE_LIMIT_MESSAGE,
 )
 from database.migrations.migration_manager import MigrationManager
 from database.migrations.versions.v004_add_services import AddServicesBackwardCompatible
@@ -189,8 +191,8 @@ async def start_bot():
 
     # Middlewares (порядок важен!)
     dp.callback_query.middleware(MessageCleanupMiddleware(ttl_hours=48))
-    dp.message.middleware(RateLimitMiddleware(rate_limit=0.5))
-    dp.callback_query.middleware(RateLimitMiddleware(rate_limit=0.3))
+    dp.message.middleware(RateLimitMiddleware(rate_limit=RATE_LIMIT_MESSAGE))
+    dp.callback_query.middleware(RateLimitMiddleware(rate_limit=RATE_LIMIT_CALLBACK))
 
     # Централизованная обработка ошибок
     @dp.errors()
