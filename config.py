@@ -71,6 +71,10 @@ BACKUP_INTERVAL_HOURS = int(os.getenv("BACKUP_INTERVAL_HOURS", "1"))  # ✅ ИЗ
 BACKUP_RETENTION_DAYS = int(os.getenv("BACKUP_RETENTION_DAYS", "30"))  # Хранить 30 дней
 BACKUP_DIR = os.getenv("BACKUP_DIR", "backups")  # Директория для бэкапов
 
+# === ВЕРСИОНИРОВАНИЕ CALLBACK И TTL (КРИТИЧНО ДЛЯ БЕЗОПАСНОСТИ) ===
+CALLBACK_VERSION = "v3"  # Версия callback данных (увеличивать при breaking changes)
+CALLBACK_MESSAGE_TTL_HOURS = 48  # Время жизни интерактивных сообщений (часы)
+
 # === КОДЫ ОШИБОК БРОНИРОВАНИЯ ===
 ERROR_NO_SERVICES = "no_services"              # Нет доступных услуг
 ERROR_SERVICE_UNAVAILABLE = "service_not_available"  # Услуга недоступна

@@ -13,6 +13,7 @@ from aiogram.types import (
 
 from config import (
     CALENDAR_MAX_MONTHS_AHEAD,
+    CALLBACK_VERSION,  # ✅ НОВОЕ: Версионирование
     DAY_NAMES,
     DAY_NAMES_SHORT,
     MONTH_NAMES,
@@ -36,7 +37,7 @@ MAIN_MENU = ReplyKeyboardMarkup(
 
 
 def create_services_keyboard(services: list) -> InlineKeyboardMarkup:
-    """Создает клавиатуру выбора услуг
+    """Создает клавиатуру выбора услуг с версионированием
     
     Args:
         services: Список объектов Service
@@ -54,12 +55,15 @@ def create_services_keyboard(services: list) -> InlineKeyboardMarkup:
         keyboard.append([
             InlineKeyboardButton(
                 text=service_text,
-                callback_data=f"select_service:{service.id}"
+                callback_data=f"{CALLBACK_VERSION}:select_service:{service.id}"  # ✅ Версионирование
             )
         ])
     
     keyboard.append([
-        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_booking_flow")
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data=f"{CALLBACK_VERSION}:cancel_booking_flow"  # ✅ Версионирование
+        )
     ])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
@@ -104,10 +108,11 @@ async def create_month_calendar(year: int, month: int) -> InlineKeyboardMarkup:
         (next_year == max_year and next_month <= max_month)
     )
 
-    # Кнопки навигации
+    # Кнопки навигации (✅ с версионированием)
     prev_button = (
         InlineKeyboardButton(
-            text="◀️", callback_data=f"cal:{prev_year}-{prev_month:02d}"
+            text="◀️", 
+            callback_data=f"{CALLBACK_VERSION}:cal:{prev_year}-{prev_month:02d}"
         )
         if can_go_prev
         else InlineKeyboardButton(text=" ", callback_data="ignore")
@@ -115,7 +120,8 @@ async def create_month_calendar(year: int, month: int) -> InlineKeyboardMarkup:
     
     next_button = (
         InlineKeyboardButton(
-            text="▶️", callback_data=f"cal:{next_year}-{next_month:02d}"
+            text="▶️",
+            callback_data=f"{CALLBACK_VERSION}:cal:{next_year}-{next_month:02d}"
         )
         if can_go_next
         else InlineKeyboardButton(text=" ", callback_data="ignore")
@@ -170,15 +176,22 @@ async def create_month_calendar(year: int, month: int) -> InlineKeyboardMarkup:
                             )
                         )
                     else:
+                        # ✅ Версионированный callback
                         row.append(
                             InlineKeyboardButton(
-                                text=f"{day}{status}", callback_data=f"day:{date_str}"
+                                text=f"{day}{status}",
+                                callback_data=f"{CALLBACK_VERSION}:day:{date_str}"
                             )
                         )
         keyboard.append(row)
 
     keyboard.append(
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_booking_flow")]
+        [
+            InlineKeyboardButton(
+                text="❌ Отмена",
+                callback_data=f"{CALLBACK_VERSION}:cancel_booking_flow"  # ✅ Версионирование
+            )
+        ]
     )
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -204,7 +217,12 @@ async def create_time_slots(
     # ✅ УЛУЧШЕНО: Проверка что дата не в прошлом
     if date_obj.date() < now.date():
         error_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 К календарю", callback_data="back_calendar")]
+            [
+                InlineKeyboardButton(
+                    text="🔙 К календарю",
+                    callback_data=f"{CALLBACK_VERSION}:back_calendar"  # ✅ Версионирование
+                )
+            ]
         ])
         return (
             "❌ ОШИБКА\n\n"
@@ -282,10 +300,11 @@ async def create_time_slots(
         is_rescheduling = data.get("reschedule_booking_id") is not None
 
         if is_free:
+            # ✅ Версионированные callback
             callback_data = (
-                f"reschedule_time:{date_str}:{time_str}"
+                f"{CALLBACK_VERSION}:reschedule_time:{date_str}:{time_str}"
                 if is_rescheduling
-                else f"time:{date_str}:{time_str}"
+                else f"{CALLBACK_VERSION}:time:{date_str}:{time_str}"
             )
         else:
             callback_data = "ignore"
@@ -330,7 +349,12 @@ async def create_time_slots(
         text += "\n✅ = свободно | ❌ = занято"
 
     keyboard.append(
-        [InlineKeyboardButton(text="🔙 К календарю", callback_data="back_calendar")]
+        [
+            InlineKeyboardButton(
+                text="🔙 К календарю",
+                callback_data=f"{CALLBACK_VERSION}:back_calendar"  # ✅ Версионирование
+            )
+        ]
     )
 
     return text, InlineKeyboardMarkup(inline_keyboard=keyboard)
@@ -342,12 +366,14 @@ def create_onboarding_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🎓 Как это работает?", callback_data="onboarding_tour"
+                    text="🎓 Как это работает?",
+                    callback_data=f"{CALLBACK_VERSION}:onboarding_tour"  # ✅ Версионирование
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="🚀 Записаться сразу", callback_data="skip_onboarding"
+                    text="🚀 Записаться сразу",
+                    callback_data=f"{CALLBACK_VERSION}:skip_onboarding"  # ✅ Версионирование
                 )
             ],
         ]
@@ -355,28 +381,31 @@ def create_onboarding_keyboard() -> InlineKeyboardMarkup:
 
 
 def create_confirmation_keyboard(date_str: str, time_str: str) -> InlineKeyboardMarkup:
-    """Клавиатура подтверждения записи"""
+    """Клавиатура подтверждения записи (с версионированием)"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="✅ Подтвердить запись",
-                    callback_data=f"confirm:{date_str}:{time_str}",
+                    callback_data=f"{CALLBACK_VERSION}:confirm:{date_str}:{time_str}",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="📅 Изменить дату", callback_data="back_calendar"
+                    text="📅 Изменить дату",
+                    callback_data=f"{CALLBACK_VERSION}:back_calendar"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="◀️ Другое время", callback_data=f"day:{date_str}"
+                    text="◀️ Другое время",
+                    callback_data=f"{CALLBACK_VERSION}:day:{date_str}"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="❌ Отменить запись", callback_data="cancel_booking_flow"
+                    text="❌ Отменить запись",
+                    callback_data=f"{CALLBACK_VERSION}:cancel_booking_flow"
                 )
             ],
         ]
@@ -384,17 +413,19 @@ def create_confirmation_keyboard(date_str: str, time_str: str) -> InlineKeyboard
 
 
 def create_cancel_confirmation_keyboard(booking_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура подтверждения отмены"""
+    """Клавиатура подтверждения отмены (с версионированием)"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✅ Да, отменить", callback_data=f"cancel_confirm:{booking_id}"
+                    text="✅ Да, отменить",
+                    callback_data=f"{CALLBACK_VERSION}:cancel_confirm:{booking_id}"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="❌ Нет, оставить", callback_data="cancel_decline"
+                    text="❌ Нет, оставить",
+                    callback_data=f"{CALLBACK_VERSION}:cancel_decline"
                 )
             ],
         ]
