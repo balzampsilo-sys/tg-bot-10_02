@@ -42,7 +42,10 @@ BACKUP_INTERVAL_HOURS = int(os.getenv("BACKUP_INTERVAL_HOURS", "24"))
 BACKUP_RETENTION_DAYS = int(os.getenv("BACKUP_RETENTION_DAYS", "30"))
 
 # === BROADCAST ===
-BROADCAST_DELAY = float(os.getenv("BROADCAST_DELAY", "0.05"))  # ✅ ADDED: Задержка между сообщениями (сек)
+BROADCAST_DELAY = float(os.getenv("BROADCAST_DELAY", "0.05"))  # Задержка между сообщениями (сек)
+
+# === CALENDAR ===
+CALENDAR_MAX_MONTHS_AHEAD = int(os.getenv("CALENDAR_MAX_MONTHS_AHEAD", "3"))  # ✅ ADDED
 
 # === TIMEZONE ===
 TIMEZONE = timezone(timedelta(hours=3))  # MSK
@@ -56,6 +59,15 @@ DAY_NAMES = [
     "Пт",  # Friday
     "Сб",  # Saturday
     "Вс",  # Sunday
+]
+
+# ✅ ADDED: Короткие названия дней
+DAY_NAMES_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+
+# ✅ ADDED: Названия месяцев
+MONTH_NAMES = [
+    "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
 ]
 
 # === CALLBACK VALIDATION (Priority 1) ===
