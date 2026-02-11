@@ -66,18 +66,8 @@ repos:
 default_language_version:
   python: python3.11
 
-# Files to exclude from all hooks
-exclude: |
-  (?x)^(
-      venv/.*|
-      .git/.*|
-      __pycache__/.*|
-      *.pyc|
-      migrations/.*|
-      backups/.*|
-      .pytest_cache/.*|
-      *.db
-  )$
+# Files to exclude from all hooks (simple glob pattern)
+exclude: '^(venv/|.git/|__pycache__/|.*\.pyc$|migrations/|backups/|.pytest_cache/|.*\.db$)'
 
 # Run hooks in parallel for speed
 default_stages: [commit]
