@@ -1,4 +1,4 @@
-"""FSM состояния"""
+"""ФSM состояния"""
 
 from aiogram.fsm.state import State, StatesGroup
 
@@ -33,3 +33,6 @@ class AdminStates(StatesGroup):
     # Состояния для редактирования услуги
     service_edit_field = State()
     service_edit_value = State()
+    
+    # Состояния для управления администраторами
+    awaiting_new_admin_id = State()
