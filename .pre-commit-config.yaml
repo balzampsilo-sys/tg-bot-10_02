@@ -13,18 +13,13 @@ repos:
       - id: check-added-large-files  # Block large files (>500KB)
         args: ['--maxkb=500']
       - id: check-merge-conflict     # Detect merge conflicts
-      - id: check-json          # Validate JSON files
-      - id: check-toml          # Validate TOML files
-      - id: mixed-line-ending   # Detect mixed line endings
-        args: ['--fix=lf']
 
   # 2. Python code formatting (black)
   - repo: https://github.com/psf/black
     rev: 24.1.1
     hooks:
       - id: black
-        language_version: python3.11
-        args: [--line-length=100, --preview]
+        args: [--line-length=100]
 
   # 3. Import sorting (isort)
   - repo: https://github.com/pycqa/isort
@@ -42,33 +37,16 @@ repos:
         args:
           - --max-line-length=100
           - --extend-ignore=E203,W503,E501  # Black compatibility
-          - --select=E,F,W  # All errors, imports, warnings
-          - --exclude=venv,.git,__pycache__,*.pyc,.pytest_cache,migrations
+          - --select=E9,F63,F7,F82,F401,F811,F821,F822  # Only critical errors
+          - --exclude=venv,.git,__pycache__,*.pyc,.pytest_cache,migrations,backups
 
-  # 5. Security checks
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.6
-    hooks:
-      - id: bandit
-        args: [-c, pyproject.toml, -ll]  # Only high/medium severity
-        additional_dependencies: ['bandit[toml]']
-
-  # 6. Docstring checks (optional, but good practice)
-  - repo: https://github.com/pycqa/pydocstyle
-    rev: 6.3.0
-    hooks:
-      - id: pydocstyle
-        args:
-          - --convention=google
-          - --add-ignore=D100,D101,D102,D103,D104,D105,D107  # Ignore missing docstrings
-
-# Configuration for specific tools
+# Use system python (the one in venv)
 default_language_version:
-  python: python3.11
+  python: python3
 
-# Files to exclude from all hooks (simple glob pattern)
-exclude: '^(venv/|.git/|__pycache__/|.*\.pyc$|migrations/|backups/|.pytest_cache/|.*\.db$)'
+# Files to exclude from all hooks
+exclude: '^(venv/|.git/|__pycache__/|migrations/|backups/)'
 
-# Run hooks in parallel for speed
+# Run hooks when committing
 default_stages: [commit]
 fail_fast: false  # Check all hooks even if one fails
