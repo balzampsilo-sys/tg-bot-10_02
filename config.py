@@ -28,8 +28,16 @@ MAX_ADMIN_ADDITIONS_PER_HOUR = int(os.getenv("MAX_ADMIN_ADDITIONS_PER_HOUR", "3"
 MAX_BOOKINGS_PER_USER = int(os.getenv("MAX_BOOKINGS_PER_USER", "3"))
 CANCELLATION_HOURS = int(os.getenv("CANCELLATION_HOURS", "24"))
 
+# === REMINDERS ===
+REMINDER_HOURS_BEFORE_1H = int(os.getenv("REMINDER_HOURS_BEFORE_1H", "1"))    # ✅ ADDED
+REMINDER_HOURS_BEFORE_2H = int(os.getenv("REMINDER_HOURS_BEFORE_2H", "2"))    # ✅ ADDED
+REMINDER_HOURS_BEFORE_24H = int(os.getenv("REMINDER_HOURS_BEFORE_24H", "24")) # ✅ ADDED
+
 # === FEEDBACK ===
-FEEDBACK_HOURS_AFTER = int(os.getenv("FEEDBACK_HOURS_AFTER", "2"))  # ✅ ADDED: Часы после записи для фидбэка
+FEEDBACK_HOURS_AFTER = int(os.getenv("FEEDBACK_HOURS_AFTER", "2"))
+
+# === SERVICE INFO ===
+SERVICE_LOCATION = os.getenv("SERVICE_LOCATION", "Москва, ул. Примерная, 1")  # ✅ ADDED
 
 # === WORK SCHEDULE ===
 WORK_HOURS_START = int(os.getenv("WORK_HOURS_START", "9"))
@@ -45,7 +53,7 @@ BACKUP_INTERVAL_HOURS = int(os.getenv("BACKUP_INTERVAL_HOURS", "24"))
 BACKUP_RETENTION_DAYS = int(os.getenv("BACKUP_RETENTION_DAYS", "30"))
 
 # === BROADCAST ===
-BROADCAST_DELAY = float(os.getenv("BROADCAST_DELAY", "0.05"))  # Задержка между сообщениями (сек)
+BROADCAST_DELAY = float(os.getenv("BROADCAST_DELAY", "0.05"))
 
 # === CALENDAR ===
 CALENDAR_MAX_MONTHS_AHEAD = int(os.getenv("CALENDAR_MAX_MONTHS_AHEAD", "3"))
@@ -64,10 +72,8 @@ DAY_NAMES = [
     "Вс",  # Sunday
 ]
 
-# Короткие названия дней
 DAY_NAMES_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
-# Названия месяцев
 MONTH_NAMES = [
     "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
     "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
