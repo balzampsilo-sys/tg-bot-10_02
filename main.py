@@ -9,6 +9,7 @@ import sys
 from aiogram import Bot, Dispatcher
 from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.storage.redis import RedisStorage, DefaultKeyBuilder
 from aiogram.types import ErrorEvent
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -21,6 +22,11 @@ from config import (
     DATABASE_PATH,
     RATE_LIMIT_CALLBACK,
     RATE_LIMIT_MESSAGE,
+    REDIS_DB,
+    REDIS_ENABLED,
+    REDIS_HOST,
+    REDIS_PASSWORD,
+    REDIS_PORT,
 )
 from database.migrations.migration_manager import MigrationManager
 from database.migrations.versions.v004_add_services import AddServicesBackwardCompatible
@@ -153,6 +159,43 @@ def setup_backup_job(scheduler: AsyncIOScheduler, backup_service: BackupService)
     )
 
 
+async def get_storage():
+    """Создает FSM storage: Redis если доступен, иначе MemoryStorage"""
+    if REDIS_ENABLED:
+        try:
+            import redis.asyncio as aioredis
+            
+            # Формируем URL для Redis
+            redis_url = f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+            if REDIS_PASSWORD:
+                redis_url = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+            
+            # Проверяем подключение
+            redis_client = aioredis.from_url(redis_url, decode_responses=True)
+            await redis_client.ping()
+            
+            storage = RedisStorage(
+                redis=redis_client,
+                key_builder=DefaultKeyBuilder(with_destiny=True)
+            )
+            
+            logger.info(f"Using RedisStorage: {REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}")
+            return storage
+            
+        except ImportError:
+            logger.warning(
+                "Redis library not installed. Install with: pip install redis"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to connect to Redis at {REDIS_HOST}:{REDIS_PORT}: {e}"
+            )
+    
+    # Fallback к MemoryStorage
+    logger.info("Using MemoryStorage (FSM states will be lost on restart)")
+    return MemoryStorage()
+
+
 @async_retry(
     max_attempts=5,
     delay=2.0,
@@ -164,7 +207,7 @@ async def start_bot():
     check_and_restore_database()
 
     bot = Bot(token=BOT_TOKEN)
-    storage = MemoryStorage()
+    storage = await get_storage()
     dp = Dispatcher(storage=storage)
 
     scheduler = AsyncIOScheduler(
@@ -225,6 +268,12 @@ async def start_bot():
         await dp.start_polling(bot, skip_updates=True)
     finally:
         logger.info("Shutting down bot...")
+        
+        # Закрываем Redis соединение если используется
+        if isinstance(storage, RedisStorage):
+            await storage.close()
+            logger.info("Redis connection closed")
+        
         await bot.session.close()
         scheduler.shutdown(wait=False)
         logger.info("Bot stopped")
