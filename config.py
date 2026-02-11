@@ -61,6 +61,12 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_DB = int(os.getenv("REDIS_DB", "0"))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
+# === SENTRY (Error Monitoring) ===
+SENTRY_ENABLED = os.getenv("SENTRY_ENABLED", "False").lower() in ("true", "1", "yes")
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT", "production")
+SENTRY_TRACES_SAMPLE_RATE = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1"))
+
 # === BACKUP ===
 BACKUP_ENABLED = os.getenv("BACKUP_ENABLED", "True").lower() in ("true", "1", "yes")
 BACKUP_DIR = os.getenv("BACKUP_DIR", "backups")
