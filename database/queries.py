@@ -79,6 +79,33 @@ class Database:
                 added_at TEXT NOT NULL)"""
             )
 
+            # ✅ AUTO-MIGRATION: Добавляем role если его нет
+            try:
+                async with db.execute("PRAGMA table_info(admins)") as cursor:
+                    columns = await cursor.fetchall()
+                    column_names = [col[1] for col in columns]
+                    
+                    if "role" not in column_names:
+                        logging.info("🔄 AUTO-MIGRATION: Adding 'role' column to admins...")
+                        await db.execute(
+                            "ALTER TABLE admins ADD COLUMN role TEXT DEFAULT 'moderator'"
+                        )
+                        logging.info("✅ AUTO-MIGRATION: 'role' column added successfully")
+            except Exception as e:
+                logging.warning(f"⚠️ AUTO-MIGRATION: Could not add 'role' column: {e}")
+
+            # ✅ AUTO-MIGRATION: Создаем audit_log
+            await db.execute(
+                """CREATE TABLE IF NOT EXISTS audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    admin_id INTEGER NOT NULL,
+                    action TEXT NOT NULL,
+                    target_id TEXT,
+                    details TEXT,
+                    timestamp TEXT NOT NULL
+                )"""
+            )
+
             # ✅ P2: Миграция - добавляем service_id если его еще нет
             try:
                 async with db.execute("PRAGMA table_info(bookings)") as cursor:
@@ -139,10 +166,21 @@ class Database:
                 """CREATE INDEX IF NOT EXISTS idx_admins_added
                 ON admins(added_at)"""
             )
+            
+            # ✅ AUTO-MIGRATION: Индексы для audit_log
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_admin ON audit_log(admin_id)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)"
+            )
 
             await db.commit()
             logging.info(
-                "Database initialized with indexes and race condition protection"
+                "✅ Database initialized with indexes, migrations and race condition protection"
             )
 
     # === БРОНИРОВАНИЯ (делегирование в BookingRepository) ===
@@ -333,10 +371,11 @@ class Database:
     async def add_admin(
         user_id: int, 
         username: Optional[str] = None, 
-        added_by: Optional[int] = None
+        added_by: Optional[int] = None,
+        role: str = "moderator"
     ) -> bool:
         """Добавить администратора"""
-        return await AdminRepository.add_admin(user_id, username, added_by)
+        return await AdminRepository.add_admin(user_id, username, added_by, role)
 
     @staticmethod
     async def remove_admin(user_id: int) -> bool:
@@ -347,3 +386,13 @@ class Database:
     async def get_admin_count() -> int:
         """Количество админов"""
         return await AdminRepository.get_admin_count()
+    
+    @staticmethod
+    async def get_admin_role(user_id: int) -> Optional[str]:
+        """Получить роль админа"""
+        return await AdminRepository.get_admin_role(user_id)
+    
+    @staticmethod
+    async def update_admin_role(user_id: int, role: str) -> bool:
+        """Обновить роль админа"""
+        return await AdminRepository.update_admin_role(user_id, role)
