@@ -25,6 +25,7 @@ from config import (
     WORK_HOURS_START,
 )
 from database.queries import Database
+from database.repositories.booking_repository import BookingRepository  # ✅ P2
 from database.repositories.service_repository import ServiceRepository
 from keyboards.user_keyboards import (
     MAIN_MENU,
@@ -459,19 +460,22 @@ async def back_calendar(callback: CallbackQuery, state: FSMContext):
 async def my_bookings(message: Message):
     """Список записей пользователя"""
     user_id = message.from_user.id
-    bookings = await Database.get_user_bookings(user_id)
+    
+    # ✅ P2: Используем BookingRepository с услугами
+    bookings = await BookingRepository.get_user_bookings(user_id)
 
     if not bookings:
-        await message.answer("📭 У вас нет активных записей", reply_markup=MAIN_MENU)
+        await message.answer("💭 У вас нет активных записей", reply_markup=MAIN_MENU)
         return
 
     text = "📋 ВАШИ АКТИВНЫЕ ЗАПИСИ:\n\n"
     keyboard = []
     now = now_local()
 
-    for i, (booking_id, date_str, time_str, username, created_at) in enumerate(
-        bookings, 1
-    ):
+    for i, (
+        booking_id, date_str, time_str, username, created_at,
+        service_id, service_name, duration_minutes, price
+    ) in enumerate(bookings, 1):
         date_obj = datetime.strptime(date_str, "%Y-%m-%d")
         booking_dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
         booking_dt = booking_dt.replace(tzinfo=TIMEZONE)
@@ -479,7 +483,9 @@ async def my_bookings(message: Message):
         days_left = (booking_dt.date() - now.date()).days
         day_name = DAY_NAMES[date_obj.weekday()]
 
-        text += f"{i}. 📅 {date_obj.strftime('%d.%m')} ({day_name}) 🕒 {time_str}"
+        # ✅ P2: Показываем услугу!
+        text += f"{i}. 📝 {service_name or 'Услуга'}\n"
+        text += f"   📅 {date_obj.strftime('%d.%m')} ({day_name}) 🕒 {time_str}"
 
         if days_left == 0:
             text += " — сегодня!\n"
@@ -487,6 +493,13 @@ async def my_bookings(message: Message):
             text += " — завтра\n"
         else:
             text += f" — через {days_left} дн.\n"
+        
+        # ✅ P2: Показываем длительность и цену
+        if duration_minutes:
+            text += f"   ⏱ {duration_minutes} мин"
+        if price:
+            text += f" | 💰 {price}"
+        text += "\n\n"
 
         keyboard.append(
             [
