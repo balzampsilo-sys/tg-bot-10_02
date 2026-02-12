@@ -1,0 +1,63 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.github/
+
+# Documentation
+*.md
+README.md
+CRITICAL_FIXES_COMPLETED.md
+
+# Logs
+*.log
+logs/
+
+# Database (will be in volume)
+data/
+backups/
+*.db
+*.db-shm
+*.db-wal
+
+# Environment
+.env
+.env.local
+.env.example
+
+# Tests
+tests/
+pytest.ini
+.pytest_cache/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Scripts
+install.sh
+
+# OS
+.DS_Store
+Thumbs.db
