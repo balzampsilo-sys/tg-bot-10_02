@@ -1,4 +1,4 @@
-"""Migration v006: Добавление таблицы истории изменений записей
+"""Миграция v006: Добавление таблицы истории изменений записей
 
 Priority: P0 (High)
 
@@ -15,7 +15,7 @@ from datetime import datetime
 
 import aiosqlite
 
-from database.migrations.base import Migration
+from database.migrations.migration_manager import Migration
 
 
 class AddBookingHistory(Migration):
@@ -24,7 +24,7 @@ class AddBookingHistory(Migration):
     version = 6
     description = "Add booking_history table for audit trail"
 
-    async def up(self, db: aiosqlite.Connection) -> None:
+    async def upgrade(self, db: aiosqlite.Connection) -> None:
         """Применить миграцию"""
         logging.info(f"[v{self.version}] Creating booking_history table...")
 
@@ -81,7 +81,7 @@ class AddBookingHistory(Migration):
 
         logging.info(f"[v{self.version}] ✅ booking_history table created with indexes")
 
-    async def down(self, db: aiosqlite.Connection) -> None:
+    async def downgrade(self, db: aiosqlite.Connection) -> None:
         """Откат миграции"""
         logging.info(f"[v{self.version}] Dropping booking_history table...")
 
