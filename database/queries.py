@@ -13,6 +13,8 @@ from database.repositories import (
     ClientStats,
     UserRepository,
 )
+from database.repositories.calendar_repository import CalendarRepository
+from database.repositories.settings_repository import SettingsRepository
 
 # Реэкспортируем ClientStats для обратной совместимости
 __all__ = ["Database", "ClientStats"]
@@ -216,6 +218,11 @@ class Database:
 
             await db.commit()
             logging.info("Database initialized with indexes and race condition protection")
+
+        # Инициализация дополнительных таблиц
+        await SettingsRepository.init_settings_table()
+        await CalendarRepository.init_calendar_tables()
+        logging.info("✅ All database tables initialized")
 
     # === БРОНИРОВАНИЯ (делегирование в BookingRepository) ===
 
