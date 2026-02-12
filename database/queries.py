@@ -94,13 +94,14 @@ class Database:
             )
 
             # P0: История изменений записей
+            # ✅ ИСПРАВЛЕНО: Убраны CHECK constraints для совместимости
             await db.execute(
                 """CREATE TABLE IF NOT EXISTS booking_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 booking_id INTEGER NOT NULL,
                 changed_by INTEGER NOT NULL,
-                changed_by_type TEXT NOT NULL CHECK(changed_by_type IN ('user', 'admin')),
-                action TEXT NOT NULL CHECK(action IN ('created', 'updated', 'cancelled', 'admin_cancelled')),
+                changed_by_type TEXT NOT NULL,
+                action TEXT NOT NULL,
                 old_date TEXT,
                 old_time TEXT,
                 new_date TEXT,

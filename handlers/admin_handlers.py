@@ -119,7 +119,8 @@ async def schedule_view(message: Message):
 
     # Группируем по датам
     schedule_by_date = defaultdict(list)
-    for date_str, time_str, username, service_name in schedule:
+    # ✅ ИСПРАВЛЕНО: SQL возвращает 6 колонок (date, time, username, service_name, duration, price)
+    for date_str, time_str, username, service_name, duration, price in schedule:
         schedule_by_date[date_str].append((time_str, username, service_name))
 
     text = "📅 РАСПИСАНИЕ НА НЕДЕЛЮ\n\n"
@@ -211,11 +212,11 @@ async def export_data(message: Message):
     # Создаем CSV в памяти
     output = io.StringIO()
     writer = csv.writer(output)
-    # ✅ ДОБАВЛЕНО: колонка Услуга
-    writer.writerow(["Дата", "Время", "Username", "Услуга"])
+    # ✅ ДОБАВЛЕНО: колонки Услуга, Длительность, Цена
+    writer.writerow(["Дата", "Время", "Username", "Услуга", "Длительность (мин)", "Цена"])
 
-    for date_str, time_str, username, service_name in bookings_data:
-        writer.writerow([date_str, time_str, username, service_name])
+    for date_str, time_str, username, service_name, duration, price in bookings_data:
+        writer.writerow([date_str, time_str, username, service_name, duration, price])
 
     # Отправляем файл
     csv_data = output.getvalue().encode("utf-8-sig")  # BOM для Excel
