@@ -34,6 +34,7 @@ from config import (
 )
 from database.migrations.migration_manager import MigrationManager
 from database.migrations.versions.v004_add_services import AddServicesBackwardCompatible
+from database.migrations.versions.v006_add_booking_history import AddBookingHistory
 from database.queries import Database
 from handlers import (
     admin_handlers,
@@ -49,6 +50,7 @@ from middlewares.message_cleanup import MessageCleanupMiddleware
 from middlewares.rate_limit import RateLimitMiddleware
 from services.booking_service import BookingService
 from services.notification_service import NotificationService
+from services.reminder_service import ReminderService
 from utils.backup_service import BackupService
 from utils.retry import async_retry
 
@@ -158,6 +160,7 @@ async def init_database():
 
     manager = MigrationManager(DATABASE_PATH)
     manager.register(AddServicesBackwardCompatible)
+    manager.register(AddBookingHistory)  # P0: История изменений записей
     await manager.migrate()
 
     logger.info("Database initialized with migrations")
@@ -188,6 +191,57 @@ def setup_backup_job(scheduler: AsyncIOScheduler, backup_service: BackupService)
     logger.info(
         f"Backup scheduled: every {BACKUP_INTERVAL_HOURS}h, retention: {BACKUP_RETENTION_DAYS} days"
     )
+
+
+def setup_reminder_jobs(scheduler: AsyncIOScheduler, bot: Bot):
+    """Настройка автоматических напоминаний о записях
+    
+    Priority: P0 (High)
+    - Напоминание за 24 часа: ежедневно в 10:00
+    - Напоминание за 1 час: каждый час
+    """
+    async def reminder_24h_job():
+        """Отправка напоминаний за 24 часа"""
+        try:
+            success, total = await ReminderService.send_reminders_24h(bot)
+            if total > 0:
+                logger.info(f"⏰ Reminder 24h job completed: {success}/{total} sent")
+        except Exception as e:
+            logger.error(f"❌ Reminder 24h job failed: {e}", exc_info=True)
+    
+    async def reminder_1h_job():
+        """Отправка напоминаний за 1 час"""
+        try:
+            success, total = await ReminderService.send_reminders_1h(bot)
+            if total > 0:
+                logger.info(f"🔔 Reminder 1h job completed: {success}/{total} sent")
+        except Exception as e:
+            logger.error(f"❌ Reminder 1h job failed: {e}", exc_info=True)
+    
+    # Напоминание за 24 часа - ежедневно в 10:00
+    scheduler.add_job(
+        reminder_24h_job,
+        "cron",
+        hour=10,
+        minute=0,
+        id="reminder_24h",
+        replace_existing=True,
+        max_instances=1,
+    )
+    
+    # Напоминание за 1 час - каждый час
+    scheduler.add_job(
+        reminder_1h_job,
+        "interval",
+        hours=1,
+        id="reminder_1h",
+        replace_existing=True,
+        max_instances=1,
+    )
+    
+    logger.info("⏰ Reminder service activated:")
+    logger.info("  - 24h reminders: daily at 10:00")
+    logger.info("  - 1h reminders: every hour")
 
 
 async def get_storage():
@@ -255,6 +309,9 @@ async def start_bot():
 
     dp["booking_service"] = booking_service
     dp["notification_service"] = notification_service
+    
+    # P0: Настройка автоматических напоминаний
+    setup_reminder_jobs(scheduler, bot)
 
     # Middlewares (порядок важен!)
     dp.callback_query.middleware(MessageCleanupMiddleware(ttl_hours=48))
@@ -294,7 +351,10 @@ async def start_bot():
     scheduler.start()
 
     logger.info("Bot started successfully")
-    logger.info("Features: Services, Audit Log, Universal Editor, Rate Limiting, Auto Cleanup")
+    logger.info(
+        "Features: Services, Audit Log, Universal Editor, Rate Limiting, "
+        "Auto Cleanup, Reminders, Booking History"
+    )
     
     if SENTRY_ENABLED:
         logger.info(f"Sentry monitoring active: {SENTRY_ENVIRONMENT}")
