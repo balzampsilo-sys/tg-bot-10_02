@@ -93,6 +93,25 @@ class Database:
             )"""
             )
 
+            # P0: История изменений записей
+            await db.execute(
+                """CREATE TABLE IF NOT EXISTS booking_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                booking_id INTEGER NOT NULL,
+                changed_by INTEGER NOT NULL,
+                changed_by_type TEXT NOT NULL CHECK(changed_by_type IN ('user', 'admin')),
+                action TEXT NOT NULL CHECK(action IN ('created', 'updated', 'cancelled', 'admin_cancelled')),
+                old_date TEXT,
+                old_time TEXT,
+                new_date TEXT,
+                new_time TEXT,
+                old_service_id INTEGER,
+                new_service_id INTEGER,
+                reason TEXT,
+                changed_at TIMESTAMP NOT NULL
+            )"""
+            )
+
             # P2: Миграция - добавляем service_id если его еще нет
             try:
                 async with db.execute("PRAGMA table_info(bookings)") as cursor:
@@ -181,6 +200,17 @@ class Database:
             await db.execute("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)")
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)"
+            )
+
+            # P0: Индексы для booking_history
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_booking_history_booking ON booking_history(booking_id)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_booking_history_changed_by ON booking_history(changed_by)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_booking_history_timestamp ON booking_history(changed_at)"
             )
 
             await db.commit()
