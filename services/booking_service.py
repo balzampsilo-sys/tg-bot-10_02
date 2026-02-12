@@ -18,6 +18,7 @@ from config import (
     TIMEZONE,
 )
 from database.queries import Database
+from database.repositories.booking_history_repository import BookingHistoryRepository
 from utils.helpers import now_local
 
 
@@ -145,6 +146,15 @@ class BookingService:
 
                 await db.commit()
 
+                # ✅ P0: Записываем в историю
+                await BookingHistoryRepository.record_create(
+                    booking_id=booking_id,
+                    user_id=user_id,
+                    date=date_str,
+                    time=time_str,
+                    service_id=service_id,
+                )
+
                 # Планируем напоминание (вне транзакции)
                 await self._schedule_reminder(booking_id, date_str, time_str, user_id)
                 await Database.log_event(
@@ -246,7 +256,7 @@ class BookingService:
             try:
                 # 1. Проверяем что старая запись существует
                 async with db.execute(
-                    "SELECT id, duration_minutes FROM bookings WHERE id=? AND user_id=?",
+                    "SELECT id, duration_minutes, service_id FROM bookings WHERE id=? AND user_id=?",
                     (booking_id, user_id),
                 ) as cursor:
                     old_booking = await cursor.fetchone()
@@ -257,6 +267,7 @@ class BookingService:
                     return False
 
                 duration = old_booking[1] or 60
+                old_service_id = old_booking[2]
 
                 # 2. Проверяем что новый слот свободен
                 is_available = await self._check_slot_availability_in_transaction(
@@ -277,6 +288,19 @@ class BookingService:
                 )
 
                 await db.commit()
+
+                # ✅ P0: Записываем в историю
+                await BookingHistoryRepository.record_reschedule(
+                    booking_id=booking_id,
+                    user_id=user_id,
+                    changed_by_type="user",
+                    old_date=old_date_str,
+                    old_time=old_time_str,
+                    new_date=new_date_str,
+                    new_time=new_time_str,
+                    old_service_id=old_service_id,
+                    new_service_id=old_service_id,  # Услуга не меняется при переносе
+                )
 
                 # 4. Перепланируем напоминания (вне транзакции)
                 self._remove_job_safe(f"reminder_{booking_id}")
@@ -371,13 +395,16 @@ class BookingService:
         except Exception as e:
             logging.error(f"Error scheduling reminder: {e}", exc_info=True)
 
-    async def cancel_booking(self, date_str: str, time_str: str, user_id: int) -> Tuple[bool, int]:
+    async def cancel_booking(
+        self, date_str: str, time_str: str, user_id: int, admin_id: Optional[int] = None
+    ) -> Tuple[bool, int]:
         """Отмена записи
 
         Args:
             date_str: Дата записи
             time_str: Время записи
             user_id: ID пользователя
+            admin_id: ID админа (если отмена админом)
 
         Returns:
             Tuple[success, booking_id]
@@ -385,24 +412,40 @@ class BookingService:
         try:
             async with aiosqlite.connect(DATABASE_PATH) as db:
                 async with db.execute(
-                    "SELECT id FROM bookings WHERE date=? AND time=? AND user_id=?",
+                    "SELECT id, service_id FROM bookings WHERE date=? AND time=? AND user_id=?",
                     (date_str, time_str, user_id),
                 ) as cursor:
                     result = await cursor.fetchone()
                     if not result:
                         return False, 0
 
-                    booking_id = result[0]
+                    booking_id, service_id = result
 
                 await db.execute("DELETE FROM bookings WHERE id=?", (booking_id,))
                 await db.commit()
+
+            # ✅ P0: Записываем в историю
+            changed_by = admin_id if admin_id else user_id
+            changed_by_type = "admin" if admin_id else "user"
+
+            await BookingHistoryRepository.record_cancel(
+                booking_id=booking_id,
+                user_id=changed_by,
+                changed_by_type=changed_by_type,
+                date=date_str,
+                time=time_str,
+                service_id=service_id,
+                reason="Cancelled by user" if not admin_id else "Cancelled by admin",
+            )
 
             # Удаляем напоминания
             self._remove_job_safe(f"reminder_{booking_id}")
             self._remove_job_safe(f"feedback_{booking_id}")
 
             await Database.log_event(user_id, "booking_cancelled", f"{date_str} {time_str}")
-            logging.info(f"Booking {booking_id} cancelled by user {user_id}")
+            logging.info(
+                f"Booking {booking_id} cancelled by {changed_by_type} (id={changed_by})"
+            )
             return True, booking_id
         except Exception as e:
             logging.error(f"Error cancelling booking: {e}", exc_info=True)
