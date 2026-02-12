@@ -35,6 +35,7 @@ from config import (
 from database.migrations.migration_manager import MigrationManager
 from database.migrations.versions.v004_add_services import AddServicesBackwardCompatible
 from database.migrations.versions.v006_add_booking_history import AddBookingHistory
+from database.migrations.versions.v007_fix_booking_history_constraints import FixBookingHistoryConstraints
 from database.queries import Database
 from handlers import (
     admin_handlers,
@@ -161,6 +162,7 @@ async def init_database():
     manager = MigrationManager(DATABASE_PATH)
     manager.register(AddServicesBackwardCompatible)
     manager.register(AddBookingHistory)  # P0: История изменений записей
+    manager.register(FixBookingHistoryConstraints)  # P0: Исправление CHECK constraint
     await manager.migrate()
 
     logger.info("Database initialized with migrations")
