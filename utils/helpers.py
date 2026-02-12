@@ -32,12 +32,11 @@ def create_ascii_chart(data: list, width: int = 7) -> str:
     return "".join(bars)
 
 
-def is_admin(user_id: int) -> bool:
+def is_static_admin(user_id: int) -> bool:
     """
-    Проверка прав администратора (синхронная версия).
+    Проверка статических админов из .env
 
-    Проверяет только статических админов из .env
-    Для полной проверки (БД + .env) используйте is_admin_async()
+    Проверяет только ADMIN_IDS из .env
 
     Args:
         user_id: Telegram user ID
@@ -50,9 +49,9 @@ def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
 
-async def is_admin_async(user_id: int) -> bool:
+async def is_admin(user_id: int) -> bool:
     """
-    Проверка прав администратора (асинхронная версия).
+    Проверка прав администратора.
 
     Проверяет:
     1. Статические админы из .env (ADMIN_IDS)
